@@ -13,8 +13,8 @@ export interface ClientConfig {
   baseUrl?: string;
   /** Client-level default organization name → `x-oo-organization-name`. */
   organization?: string;
-  /** Client-level default account alias (weak semantics — see README; prefer per-call / `using()`). */
-  accountAlias?: string;
+  /** Client-level default connection name (weak semantics — see README; prefer per-call / `using()`). */
+  connectionName?: string;
   /** Per-request timeout in ms. Default 30_000. */
   timeoutMs?: number;
   /** Max retries for 429 / 5xx / network errors (exponential backoff + jitter). Default 2. */
@@ -27,8 +27,8 @@ export interface ClientConfig {
 export interface CallOptions {
   /** Override default organization name → `x-oo-organization-name`. */
   organization?: string;
-  /** Override default account alias → `X-Oo-Connector-Alias`. */
-  accountAlias?: string;
+  /** Override default connection name → `X-Oo-Connector-Alias`. */
+  connectionName?: string;
   /** Abort signal forwarded to fetch. */
   signal?: AbortSignal;
   /** Override per-request timeout in ms. */
@@ -38,7 +38,7 @@ export interface CallOptions {
 }
 
 /** Scope accepted by `using()` — the subset of {@link CallOptions} that makes sense as a default. */
-export type ScopeOptions = Pick<CallOptions, "organization" | "accountAlias">;
+export type ScopeOptions = Pick<CallOptions, "organization" | "connectionName">;
 
 /** Raw result returned by `executeRaw`, exposing execution metadata. */
 export interface RawResult<T = unknown> {
@@ -136,8 +136,8 @@ export interface ConnectedApp {
   id: string;
   service: string;
   status?: string;
-  /** Account alias, or `null` when none is set. Pass it back as the per-call `accountAlias`. */
-  accountAlias: string | null;
+  /** Connection name, or `null` when none is set. Pass it back as the per-call `connectionName`. */
+  connectionName: string | null;
   /** Additional gateway fields (displayName, isDefault, authType, credentialSummary, …). */
   [key: string]: unknown;
 }

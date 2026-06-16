@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { ok, recorder } from "./helpers";
 
 describe("M3 — apps connection introspection (read-only)", () => {
-  it("apps.list GETs /v1/apps and surfaces the gateway `alias` as `accountAlias`", async () => {
-    // Gateway shape uses `alias`; the SDK renames it to `accountAlias` so users never see `alias`.
+  it("apps.list GETs /v1/apps and surfaces the gateway `alias` as `connectionName`", async () => {
+    // Gateway shape uses `alias`; the SDK renames it to `connectionName` so users never see `alias`.
     const gatewayApps = [
       { id: "a-1", service: "gmail", status: "active", alias: "work" },
       { id: "a-2", service: "slack", status: "active", alias: null },
@@ -13,8 +13,8 @@ describe("M3 — apps connection introspection (read-only)", () => {
     expect(calls[0]!.method).toBe("GET");
     expect(calls[0]!.url).toBe("https://connector.oomol.com/v1/apps");
     expect(result).toEqual([
-      { id: "a-1", service: "gmail", status: "active", accountAlias: "work" },
-      { id: "a-2", service: "slack", status: "active", accountAlias: null },
+      { id: "a-1", service: "gmail", status: "active", connectionName: "work" },
+      { id: "a-2", service: "slack", status: "active", connectionName: null },
     ]);
     expect("alias" in result[0]!).toBe(false);
   });

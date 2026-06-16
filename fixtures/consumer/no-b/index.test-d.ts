@@ -21,4 +21,4 @@ expectError(oomol.foo.bar(123));
 expectError(oomol.execute(123, {}));
 
 // using() returns a Connector.
-expectType<Connector>(oomol.using({ accountAlias: "work" }));
+expectType<Connector>(oomol.using({ connectionName: "work" }));

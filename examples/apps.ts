@@ -13,17 +13,17 @@ async function main() {
   console.log(`connected apps: ${apps.length}`);
 
   for (const app of apps) {
-    // { id, service, status, accountAlias, … } — `accountAlias` is `null` when none is set.
-    console.log(`- ${app.service}: id=${app.id} status=${app.status} accountAlias=${app.accountAlias}`);
+    // { id, service, status, connectionName, … } — `connectionName` is `null` when none is set.
+    console.log(`- ${app.service}: id=${app.id} status=${app.status} connectionName=${app.connectionName}`);
   }
 
-  // Targeting a specific connection: pass an app's `accountAlias` back as the per-call selector.
-  const withAlias = apps.find((a) => a.accountAlias !== null);
-  if (withAlias?.accountAlias) {
+  // Targeting a specific connection: pass an app's `connectionName` back as the per-call selector.
+  const withAlias = apps.find((a) => a.connectionName !== null);
+  if (withAlias?.connectionName) {
     const out = await oomol.execute(
       `${withAlias.service}.some_action`,
       {},
-      { accountAlias: withAlias.accountAlias },
+      { connectionName: withAlias.connectionName },
     );
     console.log("scoped call output:", out);
   }

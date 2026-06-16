@@ -83,7 +83,7 @@ interface ResolvedConfig {
   apiKey: string;
   baseUrl: string;
   organization?: string;
-  accountAlias?: string;
+  connectionName?: string;
   timeoutMs: number;
   maxRetries: number;
 }
@@ -91,7 +91,7 @@ interface ResolvedConfig {
 /** Internal merged defaults applied per call (from `using()` scope). */
 interface ScopeDefaults {
   organization?: string;
-  accountAlias?: string;
+  connectionName?: string;
 }
 
 /**
@@ -130,7 +130,7 @@ class ConnectorImpl implements ConnectorMethods {
       apiKey: config.apiKey,
       baseUrl: (config.baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, ""),
       organization: config.organization,
-      accountAlias: config.accountAlias,
+      connectionName: config.connectionName,
       timeoutMs: config.timeoutMs ?? DEFAULT_TIMEOUT_MS,
       maxRetries: config.maxRetries ?? DEFAULT_MAX_RETRIES,
     };
@@ -157,7 +157,7 @@ class ConnectorImpl implements ConnectorMethods {
 
   #resolveCall(options?: CallOptions): {
     organization?: string;
-    accountAlias?: string;
+    connectionName?: string;
     signal?: AbortSignal;
     timeoutMs: number;
     retries: number;
@@ -167,8 +167,8 @@ class ConnectorImpl implements ConnectorMethods {
 
     return {
       organization: options?.organization ?? scope.organization ?? cfg.organization,
-      // Account alias, resolved with layer precedence (per-call > using() scope > client).
-      accountAlias: options?.accountAlias ?? scope.accountAlias ?? cfg.accountAlias,
+      // Connection name, resolved with layer precedence (per-call > using() scope > client).
+      connectionName: options?.connectionName ?? scope.connectionName ?? cfg.connectionName,
       signal: options?.signal,
       timeoutMs: options?.timeoutMs ?? cfg.timeoutMs,
       retries: options?.retries ?? cfg.maxRetries,
@@ -202,9 +202,9 @@ class ConnectorImpl implements ConnectorMethods {
     if (init.body !== undefined) headers["content-type"] = "application/json";
     if (resolved.organization) headers["x-oo-organization-name"] = resolved.organization;
 
-    // Account alias selector — always carried as a client header (wire key stays `alias`).
-    if (resolved.accountAlias !== undefined) {
-      headers["x-oo-connector-alias"] = resolved.accountAlias;
+    // Connection name selector — always carried as a client header (wire key stays `alias`).
+    if (resolved.connectionName !== undefined) {
+      headers["x-oo-connector-alias"] = resolved.connectionName;
     }
 
     // Reject CR/LF in any header name or value up front with a non-retryable client error,
@@ -267,7 +267,7 @@ class ConnectorImpl implements ConnectorMethods {
   using(scope: ScopeOptions): Connector {
     const merged: ScopeDefaults = {
       organization: scope.organization ?? this.#scope.organization,
-      accountAlias: scope.accountAlias ?? this.#scope.accountAlias,
+      connectionName: scope.connectionName ?? this.#scope.connectionName,
     };
     return new ConnectorImpl(this.#sourceConfig(), merged, this.#transport) as unknown as Connector;
   }
@@ -279,7 +279,7 @@ class ConnectorImpl implements ConnectorMethods {
       apiKey: cfg.apiKey,
       baseUrl: cfg.baseUrl,
       organization: cfg.organization,
-      accountAlias: cfg.accountAlias,
+      connectionName: cfg.connectionName,
       timeoutMs: cfg.timeoutMs,
       maxRetries: cfg.maxRetries,
     };
@@ -341,10 +341,10 @@ class ConnectorImpl implements ConnectorMethods {
       list: async (options?: CallOptions): Promise<ConnectedApp[]> => {
         const spec = this.#buildSpec("GET", `/apps`, { options });
         const envelope = await send(spec, this.#transport);
-        // The gateway returns the connection alias as `alias`; surface it as `accountAlias`
-        // so users only ever see `accountAlias`.
+        // The gateway returns the connection alias as `alias`; surface it as `connectionName`
+        // so users only ever see `connectionName`.
         const raw = (envelope.data ?? []) as Array<Record<string, unknown>>;
-        return raw.map(({ alias, ...rest }) => ({ ...rest, accountAlias: alias ?? null })) as ConnectedApp[];
+        return raw.map(({ alias, ...rest }) => ({ ...rest, connectionName: alias ?? null })) as ConnectedApp[];
       },
     };
   }
