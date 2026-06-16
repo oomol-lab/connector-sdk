@@ -43,7 +43,7 @@ jobs:
       VERSION_BUMP: ${{ inputs.version_bump }}
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0 # need full history + tags to compute the next version
           fetch-tags: true
@@ -52,7 +52,7 @@ jobs:
         with:
           bun-version-file: .bun-version
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           # OIDC trusted publishing needs Node >= 22.14.0; "22" resolves to the latest 22.x.
           node-version: "22"
