@@ -14,7 +14,7 @@ describe("M1 — organization / alias mapping", () => {
 
   it("alias → X-Oo-Connector-Alias header (never the query string)", async () => {
     const { oomol, calls } = recorder(() => ok({}));
-    await oomol.execute("svc.act", {}, { accountAlias: "work" });
+    await oomol.execute("svc.act", {}, { connectionName: "work" });
     expect(calls[0]!.headers["x-oo-connector-alias"]).toBe("work");
     expect(url(calls[0]!.url).searchParams.get("alias")).toBeNull();
   });
@@ -22,14 +22,14 @@ describe("M1 — organization / alias mapping", () => {
 
 describe("M1 — option precedence (per-call > using() scope > client default)", () => {
   it("client default alias is used when nothing overrides", async () => {
-    const { oomol, calls } = recorder(() => ok({}), { accountAlias: "default-alias" });
+    const { oomol, calls } = recorder(() => ok({}), { connectionName: "default-alias" });
     await oomol.execute("svc.act", {});
     expect(calls[0]!.headers["x-oo-connector-alias"]).toBe("default-alias");
   });
 
   it("using() scope overrides client default; per-call overrides scope", async () => {
     const { oomol, calls } = recorder(() => ok({}), { organization: "org-default" });
-    const scoped = oomol.using({ organization: "org-scope", accountAlias: "scope-alias" });
+    const scoped = oomol.using({ organization: "org-scope", connectionName: "scope-alias" });
 
     await scoped.execute("svc.act", {});
     expect(calls[0]!.headers["x-oo-organization-name"]).toBe("org-scope");
@@ -48,8 +48,8 @@ describe("M1 — option precedence (per-call > using() scope > client default)",
 
   it("per-call alias overrides an inherited scope alias", async () => {
     const { oomol, calls } = recorder(() => ok({}));
-    const scoped = oomol.using({ accountAlias: "scope-alias" });
-    await scoped.execute("svc.act", {}, { accountAlias: "call-alias" });
+    const scoped = oomol.using({ connectionName: "scope-alias" });
+    await scoped.execute("svc.act", {}, { connectionName: "call-alias" });
     expect(calls[0]!.headers["x-oo-connector-alias"]).toBe("call-alias");
   });
 });

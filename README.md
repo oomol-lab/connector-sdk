@@ -63,7 +63,7 @@ new Connector({
   apiKey: "…",                  // required
   baseUrl: "https://connector.oomol.com/v1", // default (production); manual override only
   organization: "org-name",     // default org name → x-oo-organization-name
-  accountAlias: "work",         // default account alias (weak — prefer per-call / using())
+  connectionName: "work",       // default connection name (weak — prefer per-call / using())
   timeoutMs: 30_000,            // default 30s
   maxRetries: 2,                // default 2 (429 / 5xx / network → exponential backoff + jitter)
   fetch: customFetch,           // inject for tests / custom agents
@@ -75,7 +75,7 @@ new Connector({
 ```ts
 await oomol.execute("gmail.search_threads", { query }, {
   organization: "org-name",     // override default org name
-  accountAlias: "work",         // → X-Oo-Connector-Alias
+  connectionName: "work",       // → X-Oo-Connector-Alias
   signal: controller.signal,    // AbortSignal
   timeoutMs: 10_000,
   retries: 0,                   // override retry count for this call
@@ -84,11 +84,11 @@ await oomol.execute("gmail.search_threads", { query }, {
 
 **Priority:** per-call options > `using()` scope > client defaults.
 
-`accountAlias` selects which connection to use; a higher-priority layer's `accountAlias` overrides
+`connectionName` selects which connection to use; a higher-priority layer's `connectionName` overrides
 the lower layers'.
 
-> `accountAlias` resolves in scope `(user, service)`, so `organization` is the natural client-level
-> default, while `accountAlias` is best set **per call** or via a `using()` scope.
+> `connectionName` resolves in scope `(user, service)`, so `organization` is the natural client-level
+> default, while `connectionName` is best set **per call** or via a `using()` scope.
 
 ## Scoped sub-clients — `using()`
 
@@ -96,7 +96,7 @@ the lower layers'.
 defaults. The original client is unaffected.
 
 ```ts
-const work = oomol.using({ accountAlias: "work", organization: "org-uuid" });
+const work = oomol.using({ connectionName: "work", organization: "org-uuid" });
 await work.gmail.search_threads({ query });
 ```
 
@@ -159,7 +159,7 @@ creates or removes connections — connection management lives in the Connector 
 
 ```ts
 const apps = await oomol.apps.list();
-// each app: { id, service, status, accountAlias, … } — pass `app.accountAlias` as the per-call `accountAlias`
+// each app: { id, service, status, connectionName, … } — pass `app.connectionName` as the per-call `connectionName`
 ```
 
 ## Error handling

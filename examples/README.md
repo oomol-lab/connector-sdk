@@ -11,7 +11,7 @@ OOMOL_API_KEY=api_... bun run examples/basic.ts
 | --- | --- |
 | [`basic.ts`](./basic.ts) | Quickstart: `execute` (path 1), `oomol.<service>.<action>` (path 2), `executeRaw` metadata |
 | [`catalog.ts`](./catalog.ts) | `catalog.providers` (incl. `{ service, q }` filter), `catalog.actions`, `catalog.action` (JSON Schema) |
-| [`apps.ts`](./apps.ts) | `apps.list` (read-only); reading `id` / `service` / `status` / `accountAlias` |
+| [`apps.ts`](./apps.ts) | `apps.list` (read-only); reading `id` / `service` / `status` / `connectionName` |
 | [`proxy.ts`](./proxy.ts) | `proxy` passthrough — typed GET/POST, `endpoint` / `query` / `headers` / `body` |
 | [`scoping-and-options.ts`](./scoping-and-options.ts) | `new Connector({...})`, `using()`, per-call options, `AbortSignal`, timeout/retries, custom `fetch` |
 | [`error-handling.ts`](./error-handling.ts) | `ConnectorError` fields, `err.code` discrimination, `isRetryable`, client codes |

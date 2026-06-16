@@ -34,7 +34,7 @@ export async function precise() {
   const raw: RawResult = await oomol.executeRaw("gmail.search_threads", { query: "x" });
 
   // using() with options.
-  const opts: CallOptions = { accountAlias: "work" };
+  const opts: CallOptions = { connectionName: "work" };
   await oomol.using({ organization: "org" }).gmail.search_threads({ query: "x" }, opts);
 
   // proxy passthrough is typed (field is `endpoint`, not `path`).

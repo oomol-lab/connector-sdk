@@ -98,8 +98,8 @@ describe("M2 — two-path equivalence", () => {
 
   it("namespace path forwards CallOptions just like execute", async () => {
     const { oomol, calls } = recorder(() => ok({}));
-    await oomol.execute("gmail.search_threads", { query: "x" }, { accountAlias: "work" });
-    await (oomol as any).gmail.search_threads({ query: "x" }, { accountAlias: "work" });
+    await oomol.execute("gmail.search_threads", { query: "x" }, { connectionName: "work" });
+    await (oomol as any).gmail.search_threads({ query: "x" }, { connectionName: "work" });
     expect(calls[0]!.headers["x-oo-connector-alias"]).toBe("work");
     expect(calls[1]!.headers["x-oo-connector-alias"]).toBe("work");
   });
