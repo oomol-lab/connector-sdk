@@ -10,6 +10,7 @@ OOMOL_API_KEY=api_... bun run examples/basic.ts
 | File | Covers |
 | --- | --- |
 | [`basic.ts`](./basic.ts) | Quickstart: `execute` (path 1), `oomol.<service>.<action>` (path 2), `executeRaw` metadata |
+| [`feedback-to-notion.ts`](./feedback-to-notion.ts) | Scenario: a Web-standard `/feedback` route → `notion.append_block` appends each note to a Notion page |
 | [`catalog.ts`](./catalog.ts) | `catalog.providers` (incl. `{ service, q }` filter), `catalog.actions`, `catalog.action` (JSON Schema) |
 | [`apps.ts`](./apps.ts) | `apps.list` (read-only); reading `id` / `service` / `status` / `connectionName` |
 | [`proxy.ts`](./proxy.ts) | `proxy` passthrough — typed GET/POST, `endpoint` / `query` / `headers` / `body` |
