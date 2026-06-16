@@ -1,0 +1,21 @@
+{
+  "name": "consumer-no-b",
+  "version": "0.0.0",
+  "private": true,
+  "types": "../../../dist/index.d.mts",
+  "tsd": {
+    "compilerOptions": {
+      "strict": true,
+      "target": "ES2022",
+      "lib": [
+        "ES2022",
+        "DOM",
+        "DOM.Iterable"
+      ],
+      "module": "ESNext",
+      "moduleResolution": "bundler",
+      "skipLibCheck": false,
+      "types": []
+    }
+  }
+}

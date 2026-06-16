@@ -1,0 +1,28 @@
+# Examples
+
+Runnable, type-checked examples covering the full `@oomol-lab/connector` surface. Run any with a
+real API key:
+
+```sh
+OOMOL_API_KEY=api_... bun run examples/basic.ts
+```
+
+| File | Covers |
+| --- | --- |
+| [`basic.ts`](./basic.ts) | Quickstart: `execute` (path 1), `oomol.<service>.<action>` (path 2), `executeRaw` metadata |
+| [`catalog.ts`](./catalog.ts) | `catalog.providers` (incl. `{ service, q }` filter), `catalog.actions`, `catalog.action` (JSON Schema) |
+| [`apps.ts`](./apps.ts) | `apps.list` (read-only); reading `id` / `service` / `status` / `accountAlias` |
+| [`proxy.ts`](./proxy.ts) | `proxy` passthrough — typed GET/POST, `endpoint` / `query` / `headers` / `body` |
+| [`scoping-and-options.ts`](./scoping-and-options.ts) | `new Connector({...})`, `using()`, per-call options, `AbortSignal`, timeout/retries, custom `fetch` |
+| [`error-handling.ts`](./error-handling.ts) | `ConnectorError` fields, `err.code` discrimination, `isRetryable`, client codes |
+
+## Precise per-action types (optional)
+
+Every action is loosely callable out of the box (`Record<string, any>` in/out). To light up
+precise input/output types + JSDoc, install [`@oomol-lab/connector-types`](https://github.com/oomol-lab/connector-types)
+and add **one side-effect import per provider**:
+
+```ts
+import "@oomol-lab/connector-types/gmail";
+import "@oomol-lab/connector-types/slack";
+```

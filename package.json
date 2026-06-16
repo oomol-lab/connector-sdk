@@ -1,0 +1,60 @@
+{
+  "name": "@oomol-lab/connector",
+  "version": "0.0.0",
+  "description": "Core runtime client for the OOMOL Connector gateway. Runs fully without generated types (loose typing); install @oomol-lab/connector-types to light up precise per-action types.",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/oomol-lab/connector-sdk.git"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.cts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:types": "bun run scripts/test-types.ts",
+    "example": "bun run examples/basic.ts",
+    "lint": "oxlint",
+    "check": "bun run lint && bun run typecheck && bun run build && bun run test:coverage && bun run test:types",
+    "release:compute-version": "bun scripts/release/cli.ts compute-version",
+    "release:set-version": "bun scripts/release/cli.ts set-version",
+    "release:publish": "bun scripts/release/cli.ts publish",
+    "release:create-github-release": "bun scripts/release/cli.ts create-github-release"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.3",
+    "@vitest/coverage-v8": "^4.1.9",
+    "oxlint": "^1.70.0",
+    "tsd": "^0.33.0",
+    "tsdown": "^0.22.2",
+    "typescript": "6.0.3",
+    "vitest": "^4.1.9"
+  }
+}

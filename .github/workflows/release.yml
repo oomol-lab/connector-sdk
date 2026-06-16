@@ -1,0 +1,95 @@
+name: Release
+
+# Manual, version-controlled npm release.
+#
+# Pick the version one of two ways:
+#   - leave "expected_version" empty and choose a "version_bump" segment to auto-bump from the
+#     latest vX.Y.Z tag (or the package.json version when no tags exist yet), or
+#   - set "expected_version" to an exact X.Y.Z to release that version verbatim.
+#
+# Versions are resolved by scripts/release/cli.ts (unit-tested in test/release-version.test.ts);
+# git tags are the source of truth, so the committed package.json version is only the baseline.
+on:
+  workflow_dispatch:
+    inputs:
+      expected_version:
+        description: "Exact version to release (e.g. 1.2.3). Leave empty to auto-bump from the latest tag."
+        required: false
+        type: string
+        default: ""
+      version_bump:
+        description: "Segment to bump when expected_version is empty."
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+        default: patch
+
+permissions:
+  contents: write # create the git tag + GitHub release
+  id-token: write # OIDC: npm trusted publishing (token-free) + provenance
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      EXPECTED_VERSION: ${{ inputs.expected_version }}
+      VERSION_BUMP: ${{ inputs.version_bump }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # need full history + tags to compute the next version
+          fetch-tags: true
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - uses: actions/setup-node@v4
+        with:
+          # OIDC trusted publishing needs Node >= 22.14.0; "22" resolves to the latest 22.x.
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+
+      # Trusted publishing needs npm >= 11.5.1, but Node 22 ships npm 10.x — upgrade the
+      # global npm so `release:publish` runs a CLI that performs the OIDC token exchange.
+      # Pinned to the 11.x major (>= 11.5.1) so a future npm major can't silently change the
+      # publish/provenance behaviour; `npm --version` echoes the resolved version to the log.
+      - name: Upgrade npm for OIDC trusted publishing
+        run: npm install -g "npm@^11.5.1" && npm --version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # Exports RELEASE_VERSION / RELEASE_TAG / PREVIOUS_TAG to the following steps,
+      # and fails fast if the target tag already exists.
+      - name: Compute release version
+        run: bun run release:compute-version
+
+      # Write the version before building so tsdown bakes the matching __PKG_VERSION__.
+      - name: Set package.json version
+        run: bun run release:set-version
+
+      # Lint, types, and unit tests. The full type-acceptance matrix (test:types) and
+      # coverage run in ci.yml on every push to main, which is where releases are cut from.
+      - name: Verify
+        run: bun run lint && bun run typecheck && bun run test
+
+      - name: Build
+        run: bun run build
+
+      # Authenticates via OIDC trusted publishing (configured in the npm package settings
+      # for this repo + workflow file), so no NPM_TOKEN / NODE_AUTH_TOKEN is required.
+      - name: Publish to npm
+        run: bun run release:publish
+
+      # Creates the git tag at this commit and the GitHub release with generated notes.
+      - name: Create GitHub release
+        run: bun run release:create-github-release

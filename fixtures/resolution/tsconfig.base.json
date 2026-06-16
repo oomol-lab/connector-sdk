@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "skipLibCheck": false,
+    "noEmit": true,
+    "types": [],
+    "ignoreDeprecations": "6.0"
+  },
+  "files": ["consumer.ts"]
+}
