@@ -34,7 +34,7 @@ The dynamic string path compiles for **any** `actionId`. Registered actions get 
 Install [`@oomol-lab/connector-types`](https://github.com/oomol-lab/connector-types) and add **one side-effect import per provider** you use:
 
 ```ts
-import "@oomol-lab/connector-types/gmail";   // precise I/O + JSDoc for gmail.*
+import "@oomol-lab/connector-types/gmail";   // precise types + JSDoc for gmail.*
 import "@oomol-lab/connector-types/slack";   // …and slack.*
 ```
 
@@ -82,6 +82,26 @@ try {
 ```
 
 `err.code` is an open union — unknown forward-compat codes pass through. Caller cancellation rejects with the standard `AbortError`.
+
+## Feedback to Notion in one call
+
+Pushing user feedback into Notion normally means a Notion OAuth integration, their SDK, and hand-built block-payload JSON. Collapse all of that into one call — feedback arrives, you call `append_block`, it lands as a new paragraph at the bottom of your page.
+
+```ts
+import { Connector } from "@oomol-lab/connector";
+import "@oomol-lab/connector-types/notion"; // optional — precise types + JSDoc on notion.*
+
+const oomol = new Connector({ apiKey: process.env.OOMOL_API_KEY! });
+const FEEDBACK_PAGE_ID = process.env.NOTION_FEEDBACK_PAGE_ID!;
+
+Bun.serve({ routes: { "/feedback": async (req) => {
+  const { email, message } = await req.json();
+  await oomol.notion.append_block({ pageId: FEEDBACK_PAGE_ID, text: `${email ?? "anonymous"} — ${message}` });
+  return Response.json({ ok: true });
+} } });
+```
+
+The string path is identical — `oomol.execute("notion.append_block", { pageId, text })`. Full runnable version — [`examples/feedback-to-notion.ts`](./examples/feedback-to-notion.ts).
 
 ## More
 

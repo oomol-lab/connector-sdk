@@ -10,5 +10,8 @@
     "types": ["node"],
     "ignoreDeprecations": "6.0"
   },
-  "include": ["."]
+  "include": ["."],
+  // feedback-to-notion.ts uses Bun globals (Bun.serve); excluded from the typecheck so the
+  // examples need no @types/bun dependency. It still runs via `bun run examples/feedback-to-notion.ts`.
+  "exclude": ["feedback-to-notion.ts"]
 }
