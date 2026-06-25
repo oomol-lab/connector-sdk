@@ -41,3 +41,23 @@ export type {
   AppsApi,
   ConnectedApp,
 } from "./types";
+
+// ProjectConnector — a SEPARATE client (project API key) to connect accounts for your end-users
+// and run actions on their behalf. Fully distinct from the personal `Connector` above.
+export { ProjectConnector } from "./project";
+export type {
+  ProjectApi,
+  ProjectUser,
+  ProjectConnectorConfig,
+  ProjectCallOptions,
+  ProjectExecuteOptions,
+  ConnectionRequest,
+  ConnectedAccount,
+  ConnectionRequestStatus,
+  ConnectedAccountStatus,
+  ProviderSelector,
+  OAuthConnectInput,
+  ApiKeyConnectInput,
+  CustomCredentialConnectInput,
+  WaitForConnectionOptions,
+} from "./project";

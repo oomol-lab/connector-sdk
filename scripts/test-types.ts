@@ -10,7 +10,7 @@
  * Exits non-zero on any failure.
  */
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, symlinkSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, rmSync, symlinkSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
@@ -24,7 +24,14 @@ const tsd = join(root, "node_modules", ".bin", "tsd");
 function ensureSelfLink(): void {
   const scopeDir = join(root, "node_modules", "@oomol-lab");
   const link = join(scopeDir, "connector");
-  if (existsSync(link)) return;
+  // Must be a SYMLINK to the repo root so fixtures resolve the LIVE build. A real directory here is
+  // a stale installed copy (e.g. a prior `bun add @oomol-lab/connector`) that would silently shadow
+  // dist with old declarations — making the type-acceptance suite pass against outdated types.
+  // Replace anything that isn't already the symlink.
+  if (existsSync(link)) {
+    if (lstatSync(link).isSymbolicLink()) return;
+    rmSync(link, { recursive: true, force: true });
+  }
   mkdirSync(scopeDir, { recursive: true });
   symlinkSync("../..", link, "dir");
 }
