@@ -1,10 +1,11 @@
 // State 3 — partial registration (only gmail). Unregistered services stay loose,
 // while the registered service stays precise — both in the SAME program.
 import { expectType, expectError } from "tsd";
-import { Connector } from "@oomol-lab/connector";
+import { Connector, ProjectConnector } from "@oomol-lab/connector";
 import "./augment";
 
 const oomol = new Connector({ apiKey: "k" });
+const project = new ProjectConnector({ apiKey: "oo_proj_k" });
 
 type SearchOut = { threads: Array<{ threadId: string; snippet: string }> };
 
@@ -30,3 +31,16 @@ expectType<Promise<Record<string, any>>>(
 
 // Unregistered loose path accepts arbitrary fields (no schema to check against).
 oomol.notion.create_page({ anything: 1, goes: "here" });
+
+// ProjectConnector.execute mirrors the core path: registered → precise, unregistered → loose Record.
+expectType<Promise<SearchOut>>(project.execute("u", "gmail.search_threads", { query: "x" }));
+expectType<Promise<Record<string, any>>>(
+  project.execute("u", "notion.create_page", { title: "x" }),
+);
+
+// Separation: ProjectConnector exposes ONLY project-scoped operations — never the personal surface.
+expectError(project.proxy);
+expectError(project.catalog);
+expectError(project.apps);
+expectError(project.using);
+expectError(project.gmail); // closed ProjectApi has no service namespaces

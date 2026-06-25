@@ -8,7 +8,7 @@
  */
 
 import { ConnectorError } from "./errors";
-import { defaultTransport, send, type RequestSpec, type Transport } from "./http";
+import { assertHeadersSafe, defaultTransport, send, type RequestSpec, type Transport } from "./http";
 import type {
   ActionId,
   InputOf,
@@ -207,17 +207,8 @@ class ConnectorImpl implements ConnectorMethods {
       headers["x-oo-connector-alias"] = resolved.connectionName;
     }
 
-    // Reject CR/LF in any header name or value up front with a non-retryable client error,
-    // rather than letting `fetch` throw a TypeError that the status-0 retry path would then
-    // retry for the full budget. CRLF in a header is always a response-splitting attempt.
-    for (const [name, value] of Object.entries(headers)) {
-      if (/[\r\n]/.test(name) || /[\r\n]/.test(value)) {
-        throw new ConnectorError("header names and values must not contain CR or LF characters", {
-          code: "client_invalid_request",
-          status: 0,
-        });
-      }
-    }
+    // Reject CR/LF in any header name or value (response-splitting) before fetch sees them.
+    assertHeadersSafe(headers);
 
     return {
       method,

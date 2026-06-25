@@ -92,10 +92,26 @@ function retryAfterMs(res: Response): number | undefined {
 }
 
 /** The idiomatic abort error carried by a signal (its reason, or a standard AbortError). */
-function abortErrorFrom(signal: AbortSignal): unknown {
+export function abortErrorFrom(signal: AbortSignal): unknown {
   return signal.reason instanceof Error
     ? signal.reason
     : new DOMException("The operation was aborted", "AbortError");
+}
+
+/**
+ * Reject CR/LF in any header name or value up front with a non-retryable client error, rather than
+ * letting `fetch` throw a TypeError that the status-0 retry path would then retry for the full
+ * budget. CRLF in a header is always a response-splitting attempt. Shared by both clients.
+ */
+export function assertHeadersSafe(headers: Record<string, string>): void {
+  for (const [name, value] of Object.entries(headers)) {
+    if (/[\r\n]/.test(name) || /[\r\n]/.test(value)) {
+      throw new ConnectorError("header names and values must not contain CR or LF characters", {
+        code: "client_invalid_request",
+        status: 0,
+      });
+    }
+  }
 }
 
 /** Sleep for `ms`, but resolve early if the caller's signal aborts mid-wait. */

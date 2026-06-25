@@ -16,6 +16,7 @@ export type ConnectorErrorCode =
   | "app_auth_type_mismatch"
   | "provider_not_found"
   | "provider_not_configured"
+  | "provider_config_not_found"
   | "provider_error"
   | "credential_expired"
   | "scope_missing"
@@ -23,6 +24,8 @@ export type ConnectorErrorCode =
   | "connection_ambiguous"
   | "connection_account_conflict"
   | "connection_alias_conflict"
+  | "connection_request_not_found"
+  | "connected_account_not_found"
   | "rate_limited"
   | "proxy_not_supported"
   | "proxy_upstream_error"
@@ -40,6 +43,7 @@ export type ConnectorErrorCode =
   | "client_invalid_request" // local precheck failure (e.g. missing apiKey, illegal header) — not sent
   | "client_timeout" // request exceeded the client-side `timeoutMs`
   | "client_network_error" // transport-level failure (DNS/connection/fetch threw)
+  | "client_wait_timeout" // `ProjectConnector.waitForConnection` exceeded its overall `maxWaitMs` (NOT a per-request timeout)
   // Forward-compat for new backend codes:
   | (string & {});
 
@@ -94,7 +98,10 @@ const RETRYABLE_CODES: ReadonlySet<string> = new Set([
  */
 export function isRetryable(err: unknown): boolean {
   if (!(err instanceof ConnectorError)) return false;
-  if (err.code === "client_invalid_request") return false;
+  // Client-side terminal conditions: a local precheck never sent, and a `waitForConnection`
+  // wall-clock cap. Both carry status 0 but must NOT fall through to the status-0 retry heuristic
+  // below — retrying neither helps (the request was invalid / the user never finished authorizing).
+  if (err.code === "client_invalid_request" || err.code === "client_wait_timeout") return false;
   if (RETRYABLE_CODES.has(err.code)) return true;
   if (err.status === 429) return true;
   if (err.status >= 500 && err.status <= 599) return true;

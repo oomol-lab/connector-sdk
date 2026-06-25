@@ -1,10 +1,11 @@
 // State 2 — B installed AND the action under test is registered (see ./augment.ts).
 // The registered action must be precise on both paths; wrong input must error.
 import { expectType, expectError } from "tsd";
-import { Connector } from "@oomol-lab/connector";
+import { Connector, ProjectConnector } from "@oomol-lab/connector";
 import "./augment";
 
 const oomol = new Connector({ apiKey: "k" });
+const project = new ProjectConnector({ apiKey: "oo_proj_k" });
 
 type SearchOut = { threads: Array<{ threadId: string; snippet: string }> };
 
@@ -33,3 +34,16 @@ expectError(oomol.execute(123, { query: "x" }));
 // Still open: an UNREGISTERED action remains loose-callable (forward-compat),
 // so a never-registered service stays a Record.
 expectType<Promise<Record<string, any>>>(oomol.execute("slack.post_message", { text: "hi" }));
+
+// ProjectConnector.execute reuses the SAME registry seam — precise for registered actions, on both forms.
+expectType<Promise<SearchOut>>(project.execute("u", "gmail.search_threads", { query: "x" }));
+expectType<Promise<SearchOut>>(project.forUser("u").execute("gmail.search_threads", { query: "x" }));
+expectError(project.execute("u", "gmail.search_threads", {})); // missing required `query`
+expectError(project.execute("u", "gmail.search_threads", { query: 123 })); // wrong type
+
+// Separation: ProjectConnector exposes ONLY project-scoped operations — never the personal surface.
+expectError(project.proxy);
+expectError(project.catalog);
+expectError(project.apps);
+expectError(project.using);
+expectError(project.gmail); // closed ProjectApi has no service namespaces

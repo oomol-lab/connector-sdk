@@ -51,6 +51,7 @@ No architecture to learn — just five words, because all the heavy lifting happ
 | Hit an endpoint not yet modeled as an action | `proxy` | Passthrough to the upstream API, with the connection's credentials injected by the gateway. |
 | Feed actions to an LLM / build dynamic forms | `catalog` | Runtime JSON Schema (2020-12) for any action or provider — `catalog.action` / `catalog.actions` / `catalog.providers`. |
 | Discover what's connected | `apps.list` | Read-only list of the connections you've already linked. |
+| Let *your* users connect *their* accounts | `ProjectConnector` | A separate project-scoped client to connect accounts on behalf of your end-users and run actions for them. See [Connect accounts for your users](#connect-accounts-for-your-users). |
 
 Provider and action coverage comes from the gateway, not this package. Discover it at runtime with `oomol.catalog.providers()`, and see [`@oomol-lab/connector-types`](https://github.com/oomol-lab/connector-types) for the providers with precise compile-time types.
 
@@ -145,6 +146,77 @@ const { status, data } = await oomol.proxy("github", {
 });
 ```
 
+## Connect accounts for your users
+
+`Connector` runs actions on **your** connections. **`ProjectConnector`** is the other half of the product, for building a SaaS platform on OOMOL: each of **your** end-users links **their own** Gmail / Slack / GitHub / … account through your app, and you run actions on their behalf — the [composio](https://composio.dev) / [pipedream](https://pipedream.com/docs/connect) "managed auth" model.
+
+It's a **separate client**, constructed with a **project API key** (`oo_proj_…`). It exposes only project-scoped operations — completely distinct from the personal `Connector` (different key, methods, and types), so there's nothing to mix up:
+
+```ts
+import { ProjectConnector } from "@oomol-lab/connector";
+
+const project = new ProjectConnector({ apiKey: process.env.OOMOL_PROJECT_API_KEY! }); // oo_proj_...
+```
+
+Identify each end-user with an opaque `externalUserId` you choose.
+
+### OAuth — create a link, then await completion
+
+```ts
+// Returns a pending connection request — send your user to `.authorizationUrl` to authorize.
+const request = await project.connect.oauth("user_42", { service: "gmail", connectionName: "work" });
+redirectUserTo(request.authorizationUrl);
+
+// Poll until the user finishes (or it fails / expires); returns the final connection request.
+const connected = await project.waitForConnection(request);
+```
+
+### API key / custom credential — synchronous, no waiting
+
+```ts
+const account = await project.connect.apiKey("user_42", { service: "openai", apiKey: "sk-..." });
+await project.connect.customCredential("user_42", { service: "jira", values: { email, token } });
+```
+
+### Execute on the user's behalf
+
+```ts
+// The provider service is derived from the actionId prefix; the user's latest active account is used
+// unless you pass `connectionName` (or `connectedAccountId`).
+const out = await project.execute(
+  "user_42",
+  "gmail.search_threads",
+  { query: "is:unread" },
+  { connectionName: "work" },
+);
+```
+
+### Scope to one user
+
+```ts
+const user = project.forUser("user_42"); // bind the end-user once; drop the repeated id
+await user.connect.oauth({ service: "gmail" });
+await user.execute("gmail.search_threads", { query: "from:ceo" });
+```
+
+`project.execute` reuses the same [`@oomol-lab/connector-types`](https://github.com/oomol-lab/connector-types) registry as the core path — registered actions get precise input/output, the rest stay loosely callable.
+
+> [!NOTE]
+> `connectionName` is the single name for a connection: you assign it on `connect.*`, then pass it back as `execute`'s `connectionName` to target that account (the gateway's wire field is `alias`). The end-user is always `externalUserId`. Connecting by API key or custom credential is synchronous — only OAuth needs `waitForConnection`.
+
+**Coming from composio / pipedream?**
+
+| composio / pipedream | `@oomol-lab/connector` |
+| --- | --- |
+| `userId` / `external_user_id` | `externalUserId` |
+| `connectedAccounts.initiate` / `createConnectToken` (OAuth) | `project.connect.oauth` |
+| `connectedAccounts.initiate` + `AuthScheme.APIKey` | `project.connect.apiKey` |
+| `waitForConnection()` | `project.waitForConnection()` |
+| `tools.execute(slug, { userId, arguments })` | `project.execute(externalUserId, actionId, input)` |
+| `composio.getEntity(userId)` | `project.forUser(externalUserId)` |
+
+Full runnable lifecycle — [`examples/project.ts`](./examples/project.ts).
+
 ## Why this SDK?
 
 - **Zero runtime dependencies** — `sideEffects: false`, ships only `dist`. It's an in-process HTTP client, nothing more.
@@ -158,6 +230,7 @@ const { status, data } = await oomol.proxy("github", {
 - **`oomol.catalog.action / .actions / .providers`** — runtime JSON Schema for dynamic UIs, validation, or LLM tools.
 - **`oomol.apps.list()`** — read-only introspection of your connected apps.
 - **`oomol.executeRaw(...)`** — like `execute`, but returns `{ data, executionId, actionId, message }`.
+- **`ProjectConnector`** — a separate client (project API key) to build a SaaS platform: `connect.oauth` / `connect.apiKey` / `connect.customCredential`, `waitForConnection`, `execute` / `executeRaw` on a user's behalf, and `forUser` to scope to one user. See [Connect accounts for your users](#connect-accounts-for-your-users).
 
 See [`examples/`](./examples) for runnable, type-checked usage of every method.
 

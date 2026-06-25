@@ -1,5 +1,5 @@
-import { Connector } from "../src/index";
-import type { ClientConfig } from "../src/index";
+import { Connector, ProjectConnector } from "../src/index";
+import type { ClientConfig, ProjectConnectorConfig } from "../src/index";
 
 export interface CapturedCall {
   url: string;
@@ -10,6 +10,12 @@ export interface CapturedCall {
 
 export interface Recorder {
   oomol: Connector;
+  calls: CapturedCall[];
+  sleeps: number[];
+}
+
+export interface ProjectRecorder {
+  project: ProjectConnector;
   calls: CapturedCall[];
   sleeps: number[];
 }
@@ -42,15 +48,17 @@ export function fail(
   );
 }
 
-/**
- * Build a Connector backed by a programmable fetch, with an injected no-op `sleep`
- * (so retry backoff does not actually wait). Records requests and sleep durations.
- */
-export function recorder(
+interface RecordingTransport {
+  transport: { fetch: typeof fetch; sleep: (ms: number, signal?: AbortSignal) => Promise<void> };
+  calls: CapturedCall[];
+  sleeps: number[];
+}
+
+/** A programmable fetch + injected `sleep` (no real waiting), recording requests and sleep durations. */
+function makeRecordingTransport(
   handler: Handler,
-  config: Partial<ClientConfig> = {},
   opts: { sleep?: (ms: number) => Promise<void> } = {},
-): Recorder {
+): RecordingTransport {
   const calls: CapturedCall[] = [];
   const sleeps: number[] = [];
   let attempt = 0;
@@ -86,13 +94,35 @@ export function recorder(
 
   const transport = {
     fetch: fetchImpl,
-    sleep: async (ms: number) => {
-      sleeps.push(ms);
-      if (opts.sleep) await opts.sleep(ms);
-    },
+    // Record the requested duration and (like the real transport) resolve EARLY if the caller's
+    // signal aborts mid-wait — so abort-during-poll paths (e.g. waitForConnection) are exercisable
+    // without real time passing.
+    sleep: (ms: number, signal?: AbortSignal) =>
+      new Promise<void>((resolve) => {
+        sleeps.push(ms);
+        if (signal?.aborted) return resolve();
+        signal?.addEventListener("abort", () => resolve(), { once: true });
+        void (async () => {
+          if (opts.sleep) await opts.sleep(ms);
+          resolve();
+        })();
+      }),
   };
 
-  // Use the internal (config, scope, transport) constructor arity for sleep injection.
+  return { transport, calls, sleeps };
+}
+
+/**
+ * Build a Connector (personal client) backed by a programmable fetch + injected no-op `sleep`.
+ * Records requests and sleep durations.
+ */
+export function recorder(
+  handler: Handler,
+  config: Partial<ClientConfig> = {},
+  opts: { sleep?: (ms: number) => Promise<void> } = {},
+): Recorder {
+  const { transport, calls, sleeps } = makeRecordingTransport(handler, opts);
+  // Use the internal (config, scope, transport) constructor arity for transport injection.
   const Ctor = Connector as unknown as new (
     config: ClientConfig,
     scope?: unknown,
@@ -100,4 +130,20 @@ export function recorder(
   ) => Connector;
   const oomol = new Ctor({ apiKey: "test-key", ...config }, undefined, transport);
   return { oomol, calls, sleeps };
+}
+
+/** Build a ProjectConnector backed by the same recording transport. */
+export function projectRecorder(
+  handler: Handler,
+  config: Partial<ProjectConnectorConfig> = {},
+  opts: { sleep?: (ms: number) => Promise<void> } = {},
+): ProjectRecorder {
+  const { transport, calls, sleeps } = makeRecordingTransport(handler, opts);
+  // Use the internal (config, transport) constructor arity for transport injection.
+  const Ctor = ProjectConnector as unknown as new (
+    config: ProjectConnectorConfig,
+    transport?: unknown,
+  ) => ProjectConnector;
+  const project = new Ctor({ apiKey: "oo_proj_test", ...config }, transport);
+  return { project, calls, sleeps };
 }

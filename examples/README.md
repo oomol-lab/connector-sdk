@@ -13,6 +13,7 @@ OOMOL_API_KEY=api_... bun run examples/basic.ts
 | [`feedback-to-notion.ts`](./feedback-to-notion.ts) | Scenario: a Web-standard `/feedback` route → `notion.append_block` appends each note to a Notion page |
 | [`catalog.ts`](./catalog.ts) | `catalog.providers` (incl. `{ service, q }` filter), `catalog.actions`, `catalog.action` (JSON Schema) |
 | [`apps.ts`](./apps.ts) | `apps.list` (read-only); reading `id` / `service` / `status` / `connectionName` |
+| [`project.ts`](./project.ts) | `ProjectConnector` (separate client, project API key): `connect.{oauth,apiKey,customCredential}`, `waitForConnection`, `execute`, `forUser` — connect accounts for your end-users and act on their behalf |
 | [`proxy.ts`](./proxy.ts) | `proxy` passthrough — typed GET/POST, `endpoint` / `query` / `headers` / `body` |
 | [`scoping-and-options.ts`](./scoping-and-options.ts) | `new Connector({...})`, `using()`, per-call options, `AbortSignal`, timeout/retries, custom `fetch` |
 | [`error-handling.ts`](./error-handling.ts) | `ConnectorError` fields, `err.code` discrimination, `isRetryable`, client codes |
