@@ -279,6 +279,8 @@ interface ProjectTransport {
     init: { body?: unknown; options?: ProjectCallOptions; actionId?: string },
   ): Promise<Envelope>;
   sleep(ms: number, signal?: AbortSignal): Promise<void>;
+  /** The client's resolved default per-request timeout (ms); used to clamp each waitForConnection poll. */
+  defaultTimeoutMs: number;
 }
 
 const DEFAULT_POLL_INTERVAL_MS = 2000;
@@ -295,12 +297,25 @@ function toConnectedAccount(data: unknown): ConnectedAccount {
   return { ...rest, connectionName: (alias as string | null) ?? null } as unknown as ConnectedAccount;
 }
 
-/** Map the provider selector to its single wire key (`providerConfigId` preferred). Guard on
- * presence, not truthiness, so a caller-supplied value is forwarded as-is for the gateway to judge. */
+/**
+ * Resolve the provider selector to its single wire key. Exactly one of `providerConfigId` / `service`
+ * must be present (the `ProviderSelector` type says so). Reject a both-present (or neither-present)
+ * selector here — the same local precheck the client does for a missing apiKey or a CRLF header —
+ * rather than silently dropping one and connecting against the wrong provider config, which would
+ * also mask the conflict from the gateway's exactly-one check.
+ */
 function providerKeys(sel: { providerConfigId?: string; service?: string }): Record<string, string> {
-  if (sel.providerConfigId !== undefined) return { providerConfigId: sel.providerConfigId };
-  if (sel.service !== undefined) return { service: sel.service };
-  return {};
+  const hasProviderConfigId = sel.providerConfigId !== undefined;
+  const hasService = sel.service !== undefined;
+  if (hasProviderConfigId === hasService) {
+    throw new ConnectorError("exactly one of `providerConfigId` or `service` is required", {
+      code: "client_invalid_request",
+      status: 0,
+    });
+  }
+  return hasProviderConfigId
+    ? { providerConfigId: sel.providerConfigId as string }
+    : { service: sel.service as string };
 }
 
 /** Emit the wire `alias` field only when a connectionName was provided (so the gateway can default it). */
@@ -364,27 +379,30 @@ function createProjectApi(deps: ProjectTransport): ProjectApi {
     const pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
     const maxWaitMs = options.maxWaitMs ?? DEFAULT_MAX_WAIT_MS;
     const start = Date.now();
+    let last: ConnectionRequest | undefined;
     for (;;) {
       if (options.signal?.aborted) throw abortErrorFrom(options.signal);
-      // Forward the request-shaped options (signal/timeoutMs/retries) to every poll so polling stays
-      // auth-consistent. WaitForConnectionOptions extends ProjectCallOptions and the request seam
-      // ignores the extra pollIntervalMs/maxWaitMs keys, so `options` flows straight through and can
-      // never fall out of sync with a hand-copied field list.
-      const request = await getConnectionRequest(id, options);
-      // Any terminal status (connected | failed | expired) ends the wait — never throw for a user who
-      // simply hasn't finished; the natural initiated→expired flip returns here too.
-      if (request.status !== "initiated") return request;
-      // Enforce maxWaitMs as a hard cap: stop BEFORE waiting/polling past it, and clamp the final
-      // sleep to the remaining budget so the next poll fires no later than the deadline (rather than
-      // a full pollIntervalMs past it, then wasting one more request).
+      // Enforce maxWaitMs as a hard wall-clock cap: never START a poll once the budget is spent...
       const remaining = maxWaitMs - (Date.now() - start);
       if (remaining <= 0) {
         throw new ConnectorError(
           `waitForConnection exceeded maxWaitMs (${maxWaitMs}ms); connection request is still pending`,
-          { code: "client_wait_timeout", status: 0, data: request },
+          { code: "client_wait_timeout", status: 0, data: last },
         );
       }
-      await deps.sleep(Math.min(pollIntervalMs, remaining), options.signal);
+      // ...and clamp THIS poll's own per-request timeout to the remaining budget, so a poll started
+      // near the deadline cannot run (via its timeout + retries) past the cap. Forwarding `options`
+      // also threads signal/retries into each poll; the request seam ignores pollIntervalMs/maxWaitMs.
+      last = await getConnectionRequest(id, {
+        ...options,
+        timeoutMs: Math.min(options.timeoutMs ?? deps.defaultTimeoutMs, remaining),
+      });
+      // Any terminal status (connected | failed | expired) ends the wait — never throw for a user who
+      // simply hasn't finished; the natural initiated→expired flip returns here too.
+      if (last.status !== "initiated") return last;
+      // Clamp the inter-poll sleep to the remaining budget; the loop-top check then turns a fully
+      // elapsed budget into client_wait_timeout instead of sleeping or polling past the deadline.
+      await deps.sleep(Math.min(pollIntervalMs, Math.max(0, maxWaitMs - (Date.now() - start))), options.signal);
     }
   };
 
@@ -522,6 +540,7 @@ class ProjectConnectorImpl {
     return createProjectApi({
       request: (method, path, init) => send(buildProjectSpec(cfg, method, path, init), t),
       sleep: (ms, signal) => t.sleep(ms, signal),
+      defaultTimeoutMs: cfg.timeoutMs,
     }) as unknown as ProjectConnectorImpl;
   }
 }

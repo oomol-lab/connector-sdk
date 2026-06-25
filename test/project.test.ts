@@ -314,11 +314,13 @@ describe("ProjectConnector — waitForConnection", () => {
     expect(calls.every((c) => c.method === "GET" && c.headers["authorization"] === "Bearer oo_proj_test")).toBe(true);
   });
 
-  it("throws a non-retryable client_wait_timeout when maxWaitMs elapses before completion", async () => {
-    const { project } = projectRecorder(() => ok(requestPayload({ status: "initiated" })));
+  it("throws a non-retryable client_wait_timeout when maxWaitMs elapses, without polling past the cap", async () => {
+    const { project, calls } = projectRecorder(() => ok(requestPayload({ status: "initiated" })));
     await expect(
       project.waitForConnection("cr_1", { maxWaitMs: 0 }),
     ).rejects.toMatchObject({ code: "client_wait_timeout", status: 0 });
+    // The deadline is checked BEFORE each poll, so a spent budget issues no request at all.
+    expect(calls).toHaveLength(0);
 
     try {
       await project.waitForConnection("cr_1", { maxWaitMs: 0 });
