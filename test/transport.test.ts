@@ -23,6 +23,68 @@ describe("transport — non-JSON bodies", () => {
   });
 });
 
+describe("transport — non-envelope JSON normalization", () => {
+  it("treats a bare 2xx JSON object (no `success` discriminator) as the data payload itself", async () => {
+    const payload = { id: "github:default", configured: true };
+    const { oomol } = recorder(() => new Response(JSON.stringify(payload), { status: 200 }));
+    const data = await oomol.execute("svc.act", {});
+    expect(data).toEqual(payload);
+  });
+
+  it("treats bare 2xx JSON arrays and primitives as the data payload too", async () => {
+    const bodies = [JSON.stringify([1, 2, 3]), "true"];
+    const { oomol } = recorder((call) => new Response(bodies[Number(call.url.includes("second"))], { status: 200 }));
+    expect(await oomol.execute("svc.act", {})).toEqual([1, 2, 3]);
+    expect(await oomol.execute("svc.second", {})).toBe(true);
+  });
+
+  it("maps the runtime middleware `{ error: { code, message } }` failure shape to its code and message", async () => {
+    const { oomol } = recorder(
+      () =>
+        new Response(JSON.stringify({ error: { code: "unknown_service", message: "Unknown service: nope." } }), {
+          status: 404,
+        }),
+      { maxRetries: 0 },
+    );
+    await expect(oomol.execute("svc.act", {})).rejects.toMatchObject({
+      code: "unknown_service",
+      status: 404,
+      message: "Unknown service: nope.",
+    });
+  });
+
+  it("keeps a top-level `message` and carries the body as data for unrecognized non-2xx JSON", async () => {
+    const { oomol } = recorder(
+      () => new Response(JSON.stringify({ message: "gateway melted", hint: 42 }), { status: 503 }),
+      { maxRetries: 0 },
+    );
+    const err = await oomol.execute("svc.act", {}).catch((e) => e);
+    expect(err.code).toBe("provider_error"); // no code in the body; derived from the status family
+    expect(err.status).toBe(503);
+    expect(err.message).toBe("gateway melted");
+    expect(err.data).toEqual({ message: "gateway melted", hint: 42 });
+  });
+
+  it("rejects malformed runtime error shapes (non-string code, missing message) into the fallback path", async () => {
+    // Both near-misses of `{ error: { code, message } }` must degrade to the status-derived code
+    // with the body preserved as data — never a crash or a half-mapped error.
+    const bodies = [{ error: { code: 404, message: "x" } }, { error: { code: "x" } }];
+    for (const body of bodies) {
+      const { oomol } = recorder(() => new Response(JSON.stringify(body), { status: 404 }), { maxRetries: 0 });
+      const err = await oomol.execute("svc.act", {}).catch((e) => e);
+      expect(err.code).toBe("provider_error");
+      expect(err.status).toBe(404);
+      expect(err.data).toEqual(body);
+    }
+  });
+
+  it("treats a 2xx body shaped like a runtime error as success data (error mapping is non-2xx only)", async () => {
+    const body = { error: { code: "x", message: "y" } };
+    const { oomol } = recorder(() => new Response(JSON.stringify(body), { status: 200 }));
+    expect(await oomol.execute("svc.act", {})).toEqual(body);
+  });
+});
+
 describe("transport — retries clamping", () => {
   it("a negative retries count makes exactly one attempt (no fall-through to the final throw)", async () => {
     const { oomol, calls } = recorder(() => ok({ done: true }));

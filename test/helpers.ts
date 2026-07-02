@@ -1,5 +1,5 @@
-import { Connector, ProjectConnector } from "../src/index";
-import type { ClientConfig, ProjectConnectorConfig } from "../src/index";
+import { Connector, OpenConnector, ProjectConnector } from "../src/index";
+import type { ClientConfig, OpenConnectorConfig, ProjectConnectorConfig } from "../src/index";
 
 export interface CapturedCall {
   url: string;
@@ -20,6 +20,12 @@ export interface ProjectRecorder {
   sleeps: number[];
 }
 
+export interface OpenRecorder {
+  open: OpenConnector;
+  calls: CapturedCall[];
+  sleeps: number[];
+}
+
 type Handler = (call: CapturedCall, attempt: number) => Response | Promise<Response>;
 
 /** JSON success envelope helper. */
@@ -28,6 +34,14 @@ export function ok(data: unknown, meta?: Record<string, unknown>, status = 200):
     JSON.stringify({ success: true, message: "OK", data, meta }),
     { status, headers: { "content-type": "application/json" } },
   );
+}
+
+/** The self-hosted runtime's non-envelope failure shape (`{ error: { code, message } }`). */
+export function runtimeFail(code: string, status: number, message = code): Response {
+  return new Response(JSON.stringify({ error: { code, message } }), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
 }
 
 /** JSON failure envelope helper. */
@@ -130,6 +144,22 @@ export function recorder(
   ) => Connector;
   const oomol = new Ctor({ apiKey: "test-key", ...config }, undefined, transport);
   return { oomol, calls, sleeps };
+}
+
+/** Build an OpenConnector backed by the same recording transport. */
+export function openRecorder(
+  handler: Handler,
+  config: OpenConnectorConfig = {},
+  opts: { sleep?: (ms: number) => Promise<void> } = {},
+): OpenRecorder {
+  const { transport, calls, sleeps } = makeRecordingTransport(handler, opts);
+  // Use the internal (config, transport) constructor arity for transport injection.
+  const Ctor = OpenConnector as unknown as new (
+    config?: OpenConnectorConfig,
+    transport?: unknown,
+  ) => OpenConnector;
+  const open = new Ctor(config, transport);
+  return { open, calls, sleeps };
 }
 
 /** Build a ProjectConnector backed by the same recording transport. */

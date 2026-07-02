@@ -132,7 +132,7 @@ export interface CatalogApi {
 
 /** A connected app (`GET /v1/apps`). */
 export interface ConnectedApp {
-  /** Connection id (uuid) assigned by the gateway. */
+  /** Connection id assigned by the backend (hosted gateway: uuid; self-hosted runtime: `service:connectionName`). */
   id: string;
   service: string;
   status?: string;

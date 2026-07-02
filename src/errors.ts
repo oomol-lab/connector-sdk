@@ -38,12 +38,25 @@ export type ConnectorErrorCode =
   | "subscription_exists"
   | "subscription_cleaning_up"
   | "subscription_needs_recreate"
+  // Self-hosted runtime codes (the open-source backend an `OpenConnector` talks to):
+  | "unauthorized"
+  | "not_found"
+  | "internal_error"
+  | "invalid_json"
+  | "invalid_connection_name"
+  | "unknown_service"
+  | "connection_not_found"
+  | "action_not_allowed"
+  | "executor_unavailable"
+  | "authorization_failed"
+  | "oauth_token_expired"
+  | "oauth_refresh_unavailable"
   // Client-only extension codes (NOT in the backend enum; do not overlap with it).
   // Held by the `| (string & {})` open union.
   | "client_invalid_request" // local precheck failure (e.g. missing apiKey, illegal header) — not sent
   | "client_timeout" // request exceeded the client-side `timeoutMs`
   | "client_network_error" // transport-level failure (DNS/connection/fetch threw)
-  | "client_wait_timeout" // `ProjectConnector.waitForConnection` exceeded its overall `maxWaitMs` (NOT a per-request timeout)
+  | "client_wait_timeout" // a `waitForConnection` exceeded its overall `maxWaitMs` (NOT a per-request timeout)
   // Forward-compat for new backend codes:
   | (string & {});
 

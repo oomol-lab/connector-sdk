@@ -74,19 +74,24 @@ export type OutputOf<A extends string> = A extends keyof ActionRegistry
 type ServiceNameOf<K> = K extends `${infer S}.${string}` ? S : never;
 type ServiceName = ServiceNameOf<keyof ActionRegistry & string>;
 
-/** Methods of one registered service, keyed by the action's local name. */
-type ActionsOf<S extends string> = {
+/**
+ * Methods of one registered service, keyed by the action's local name. `O` is the per-call
+ * options type of the CLIENT exposing the namespace — the hosted `Connector` passes its
+ * `CallOptions` (the default), the self-hosted `OpenConnector` its narrower options (no
+ * `organization`); the registry machinery itself is client-agnostic.
+ */
+type ActionsOf<S extends string, O = CallOptions> = {
   [K in keyof ActionRegistry as K extends `${S}.${infer N}` ? N : never]: (
     input: InputOf<K & string>,
-    options?: CallOptions,
+    options?: O,
   ) => Promise<OutputOf<K & string>>;
 };
 
 /** Loose fallback namespace for unregistered services. */
-export type LooseNamespace = {
+export type LooseNamespace<O = CallOptions> = {
   [action: string]: (
     input?: Record<string, any>,
-    options?: CallOptions,
+    options?: O,
   ) => Promise<Record<string, any>>;
 };
 
@@ -105,6 +110,6 @@ export type LooseNamespace = {
  * OTHER action name on that service resolves through the loose index signature. The outer
  * `& Record<string, LooseNamespace>` does the same for entirely unregistered services.
  */
-export type ServiceNamespaces = RegistryEmpty extends true
-  ? Record<string, LooseNamespace>
-  : { [S in ServiceName]: ActionsOf<S> & LooseNamespace } & Record<string, LooseNamespace>;
+export type ServiceNamespaces<O = CallOptions> = RegistryEmpty extends true
+  ? Record<string, LooseNamespace<O>>
+  : { [S in ServiceName]: ActionsOf<S, O> & LooseNamespace<O> } & Record<string, LooseNamespace<O>>;
