@@ -76,7 +76,11 @@ export interface ConnectorMethods {
   readonly apps: AppsApi;
 }
 
-/** The public Connector type: methods + (precise/loose) service namespaces. */
+/**
+ * The public Connector type: methods + (precise/loose) service namespaces. A service id colliding
+ * with a reserved member (`execute` / `executeRaw` / `using` / `proxy` / `catalog` / `apps`)
+ * loses only its path-2 sugar — call it via `execute("<service>.<action>", …)`.
+ */
 export type Connector = ConnectorMethods & ServiceNamespaces;
 
 interface ResolvedConfig {

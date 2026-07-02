@@ -61,3 +61,22 @@ export type {
   CustomCredentialConnectInput,
   WaitForConnectionOptions,
 } from "./project";
+
+// OpenConnector — the personal client for the open-source, self-hosted runtime (the server YOU
+// run). Mirrors the core `Connector` action surface: execute, catalog, apps — nothing else; the
+// runtime's management API belongs to its web console, not this SDK.
+export { OpenConnector } from "./open";
+export type {
+  OpenConnectorApi,
+  OpenConnectorConfig,
+  OpenCallOptions,
+  OpenExecuteOptions,
+  OpenCatalogApi,
+  OpenAppsApi,
+  OpenHealth,
+  OpenActionMetadata,
+  OpenActionFollowUp,
+  OpenActionAsyncLifecycle,
+  OpenActionSearchResult,
+  OpenSearchQuery,
+} from "./open";

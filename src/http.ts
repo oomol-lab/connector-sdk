@@ -153,11 +153,35 @@ function toConnectorError(
   });
 }
 
+/** Recognize a gateway envelope by its boolean `success` discriminator. */
+function isEnvelope(parsed: unknown): parsed is Envelope {
+  return (
+    typeof parsed === "object" &&
+    parsed !== null &&
+    !Array.isArray(parsed) &&
+    typeof (parsed as { success?: unknown }).success === "boolean"
+  );
+}
+
+/**
+ * Extract the self-hosted runtime's non-envelope error body — `{ error: { code, message } }` —
+ * if present. Its middleware answers in this shape on every route (e.g. a 401), including the
+ * `/v1` envelope surface, so the transport must understand it wherever it appears.
+ */
+function runtimeErrorBody(parsed: unknown): { code: string; message: string } | undefined {
+  if (typeof parsed !== "object" || parsed === null) return undefined;
+  const error = (parsed as { error?: unknown }).error;
+  if (typeof error !== "object" || error === null) return undefined;
+  const { code, message } = error as { code?: unknown; message?: unknown };
+  return typeof code === "string" && typeof message === "string" ? { code, message } : undefined;
+}
+
 async function parseBody(res: Response): Promise<Envelope | undefined> {
   const text = await res.text();
   if (!text) return undefined;
+  let parsed: unknown;
   try {
-    return JSON.parse(text) as Envelope;
+    parsed = JSON.parse(text);
   } catch {
     // Non-JSON body. A 2xx payload is still a success — surface the raw text as `data`
     // (e.g. a plain-text "OK", or a 200 page injected by an intermediary). A non-2xx non-JSON
@@ -167,6 +191,16 @@ async function parseBody(res: Response): Promise<Envelope | undefined> {
       ? { success: true, data: text }
       : { success: false, message: text, data: null };
   }
+  if (isEnvelope(parsed)) return parsed;
+  // Non-envelope 2xx JSON (an intermediary, or a backend answering plainly): the body IS the data.
+  if (res.ok) return { success: true, data: parsed };
+  // The self-hosted runtime's middleware failure shape — map it onto the envelope's error fields.
+  const error = runtimeErrorBody(parsed);
+  if (error) return { success: false, message: error.message, errorCode: error.code, data: null };
+  // Unrecognized non-ok JSON (an intermediary's error page): keep any top-level `message` for the
+  // error text and carry the whole body as `data` for debugging.
+  const message = (parsed as { message?: unknown } | null)?.message;
+  return { success: false, message: typeof message === "string" ? message : undefined, data: parsed };
 }
 
 /**

@@ -52,6 +52,7 @@ No architecture to learn — just five words, because all the heavy lifting happ
 | Feed actions to an LLM / build dynamic forms | `catalog` | Runtime JSON Schema (2020-12) for any action or provider — `catalog.action` / `catalog.actions` / `catalog.providers`. |
 | Discover what's connected | `apps.list` | Read-only list of the connections you've already linked. |
 | Let *your* users connect *their* accounts | `ProjectConnector` | A separate project-scoped client to connect accounts on behalf of your end-users and run actions for them. See [Connect accounts for your users](#connect-accounts-for-your-users). |
+| Run the open-source server yourself | `OpenConnector` | Both call paths (`execute` and `open.<service>.<action>`) + `catalog` / `apps` / `health` against your self-hosted runtime. See [Self-hosted runtime](#self-hosted-runtime). |
 
 Provider and action coverage comes from the gateway, not this package. Discover it at runtime with `oomol.catalog.providers()`, and see [`@oomol-lab/connector-types`](https://github.com/oomol-lab/connector-types) for the providers with precise compile-time types.
 
@@ -217,6 +218,35 @@ await user.execute("gmail.search_threads", { query: "from:ceo" });
 
 Full runnable lifecycle — [`examples/project.ts`](./examples/project.ts).
 
+## Self-hosted runtime
+
+Running the open-source Connector server yourself (localhost, Docker, your own infra)? **`OpenConnector`** is the personal client for it — both call paths you know (everything except `proxy` and `using()`), pointed at your own server:
+
+```ts
+import { OpenConnector } from "@oomol-lab/connector";
+
+const open = new OpenConnector(); // defaults to http://localhost:3000; a fresh instance needs no auth
+
+await open.execute("hackernews.get_top_stories", {}); // path 1 — dynamic string
+await open.gmail.search_threads({ query: "from:boss" }); // path 2 — namespace sugar, same registry types
+await open.catalog.search("send email", { limit: 5 }); // runtime extras: search, services, health
+await open.apps.list();
+```
+
+Auth is a single optional **runtime token** (`oct_…`), minted in the runtime's web console:
+
+```ts
+const open = new OpenConnector({
+  baseUrl: "https://connect.internal.example.com", // the server ORIGIN — not a /v1 url
+  runtimeToken: process.env.OOMOL_CONNECT_RUNTIME_TOKEN, // omit while the instance has no tokens
+});
+```
+
+> [!NOTE]
+> Connections, credentials, and OAuth setup are managed in the runtime's **web console** — that's server administration, deliberately outside this SDK. The client consumes what the console configured; connection selection has two layers (per-call `connectionName` over the client-level default — there is no `using()` scope and no `organization`). And as on the hosted client, a service id that collides with a member name (`execute` / `executeRaw` / `health` / `catalog` / `apps`) keeps working through `execute("<service>.<action>", …)` — only its namespace sugar is shadowed.
+
+Full runnable tour — [`examples/open.ts`](./examples/open.ts).
+
 ## Why this SDK?
 
 - **Zero runtime dependencies** — `sideEffects: false`, ships only `dist`. It's an in-process HTTP client, nothing more.
@@ -231,6 +261,7 @@ Full runnable lifecycle — [`examples/project.ts`](./examples/project.ts).
 - **`oomol.apps.list()`** — read-only introspection of your connected apps.
 - **`oomol.executeRaw(...)`** — like `execute`, but returns `{ data, executionId, actionId, message }`.
 - **`ProjectConnector`** — a separate client (project API key) to build a SaaS platform: `connect.oauth` / `connect.apiKey` / `connect.customCredential`, `waitForConnection`, `execute` / `executeRaw` on a user's behalf, and `forUser` to scope to one user. See [Connect accounts for your users](#connect-accounts-for-your-users).
+- **`OpenConnector`** — the personal client for the open-source self-hosted runtime: both call paths (`execute` and `open.<service>.<action>`), `catalog` / `apps` (+ `health`, `catalog.search` / `.services`, `apps.listByService` / `.authenticated`), authenticated by an optional runtime token. See [Self-hosted runtime](#self-hosted-runtime).
 
 See [`examples/`](./examples) for runnable, type-checked usage of every method.
 
