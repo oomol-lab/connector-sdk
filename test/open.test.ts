@@ -54,14 +54,24 @@ describe("OpenConnector — config & auth", () => {
     }
   });
 
-  it("constructs with no config at all", async () => {
-    const { OpenConnector } = await import("../src/index");
+  it("throws a client_invalid_request for an unparsable baseUrl instead of a per-call TypeError", () => {
+    for (const baseUrl of ["not a url", "example.com"]) {
+      expect(() => openRecorder(() => ok(null), { baseUrl })).toThrow(ConnectorError);
+      try {
+        openRecorder(() => ok(null), { baseUrl });
+      } catch (err) {
+        expect(err).toMatchObject({ code: "client_invalid_request", status: 0 });
+      }
+    }
+  });
+
+  it("constructs with no config at all", () => {
     expect(() => new OpenConnector()).not.toThrow();
   });
 
   it("honors an injected `fetch`", async () => {
     const fetchImpl = vi.fn(async () => ok({ ok: true, runtime: "oomol-connect" }));
-    const open = new (await import("../src/index")).OpenConnector({ fetch: fetchImpl as unknown as typeof fetch });
+    const open = new OpenConnector({ fetch: fetchImpl as unknown as typeof fetch });
     const health = await open.health();
     expect(health.runtime).toBe("oomol-connect");
     expect(fetchImpl).toHaveBeenCalledOnce();

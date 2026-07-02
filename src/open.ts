@@ -415,6 +415,16 @@ class OpenConnectorImpl {
       timeoutMs: config.timeoutMs ?? DEFAULT_TIMEOUT_MS,
       maxRetries: config.maxRetries ?? DEFAULT_MAX_RETRIES,
     };
+    // Reject an unparsable baseUrl up front as the SDK's typed error — otherwise it would only
+    // surface later, per call, as a raw TypeError from URL construction in the request builder.
+    try {
+      void new URL(cfg.baseUrl);
+    } catch {
+      throw new ConnectorError("`baseUrl` must be a valid absolute URL", {
+        code: "client_invalid_request",
+        status: 0,
+      });
+    }
     const t = transport ?? (config.fetch ? { ...defaultTransport, fetch: config.fetch } : defaultTransport);
     const api = createOpenApi({
       request: (method, path, init) => send(buildOpenSpec(cfg, method, path, init), t),
