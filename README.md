@@ -1,9 +1,19 @@
+<div align="center">
+
 # @oomol-lab/connector
 
-**Call any connector action in one typed line.** Thin, zero-dependency HTTP client for the OOMOL Connector gateway — run actions, proxy upstream APIs, and introspect the catalog. Auth, OAuth, and credentials live on the gateway; the SDK is just the typed call.
+**English** · [简体中文](docs/README/README.zh-CN.md) · [繁體中文](docs/README/README.zh-TW.md) · [日本語](docs/README/README.ja.md) · [Русский](docs/README/README.ru.md) · [Français](docs/README/README.fr.md)
 
 [![npm](https://img.shields.io/npm/v/@oomol-lab/connector.svg)](https://www.npmjs.com/package/@oomol-lab/connector)
+[![CI](https://img.shields.io/github/actions/workflow/status/oomol-lab/connector-sdk/ci.yml?branch=main&label=CI)](https://github.com/oomol-lab/connector-sdk/actions/workflows/ci.yml)
+[![npm downloads](https://img.shields.io/npm/dm/@oomol-lab/connector.svg)](https://www.npmjs.com/package/@oomol-lab/connector)
+[![minzipped size](https://img.shields.io/bundlephobia/minzip/@oomol-lab/connector)](https://bundlephobia.com/package/@oomol-lab/connector)
+[![types](https://img.shields.io/npm/types/@oomol-lab/connector.svg)](https://www.npmjs.com/package/@oomol-lab/connector)
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+
+</div>
+
+**Call any connector action in one typed line.** Thin, zero-dependency HTTP client for the OOMOL Connector gateway — run actions, proxy upstream APIs, and introspect the catalog. Auth, OAuth, and credentials live on the gateway; the SDK is just the typed call.
 
 **Zero runtime dependencies.** Works fully with loose typing — add [`@oomol-lab/connector-types`](https://github.com/oomol-lab/connector-types) to light up precise per-action types + JSDoc. No codegen, no CLI.
 
