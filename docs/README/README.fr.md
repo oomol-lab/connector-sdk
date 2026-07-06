@@ -29,6 +29,11 @@ const { threads } = await oomol.execute("gmail.search_threads", { query: "from:b
 const r = await oomol.gmail.search_threads({ query: "from:boss" });
 ```
 
+> [!TIP]
+> **Vous construisez pour *d'autres* personnes, ou vous faites tourner le serveur vous-même ?** Cette page couvre le `Connector` par défaut — des actions sur **vos propres** connexions. Deux clients frères sont livrés dans le même paquet :
+> - **[Connecter les comptes de vos utilisateurs](#connecter-les-comptes-de-vos-utilisateurs)** — `ProjectConnector` : vos utilisateurs finaux relient *leurs* comptes Gmail / Slack / GitHub / …, et vous exécutez des actions en leur nom (le modèle d'authentification gérée de composio / pipedream).
+> - **[Runtime auto-hébergé](#runtime-auto-hébergé)** — `OpenConnector` : les mêmes appels typés, pointés vers le serveur Connector open source que vous hébergez vous-même.
+
 ## Obtenir une clé API
 
 Il vous faut une clé API OOMOL Connector (de la forme `api_…`). Définissez-la dans `OOMOL_API_KEY` et vous êtes prêt — le SDK ne valide jamais la clé localement ; la passerelle autorise chaque requête.

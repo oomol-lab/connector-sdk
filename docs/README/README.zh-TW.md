@@ -29,6 +29,11 @@ const { threads } = await oomol.execute("gmail.search_threads", { query: "from:b
 const r = await oomol.gmail.search_threads({ query: "from:boss" });
 ```
 
+> [!TIP]
+> **在為*別人*打造,或想自己跑伺服器?** 本頁講的是預設的 `Connector`——在**你自己的** connection 上執行 action。同一個套件裡還有另外兩個同源用戶端:
+> - **[為你的使用者連接帳號](#為你的使用者連接帳號)** — `ProjectConnector`:你的終端使用者連結*他們自己的* Gmail / Slack / GitHub / …… 帳號,由你代表他們執行 action(也就是 composio / pipedream 的託管驗證模式)。
+> - **[自架執行環境](#自架執行環境)** — `OpenConnector`:同樣的型別化呼叫,指向你自己架設的開源 Connector 伺服器。
+
 ## 取得 API 金鑰
 
 你需要一組 OOMOL Connector API 金鑰（格式類似 `api_…`）。把它設為 `OOMOL_API_KEY` 就準備就緒了——SDK 從不在本機驗證金鑰；每個請求都由 gateway 授權。
