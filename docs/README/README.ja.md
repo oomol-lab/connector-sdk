@@ -29,6 +29,11 @@ const { threads } = await oomol.execute("gmail.search_threads", { query: "from:b
 const r = await oomol.gmail.search_threads({ query: "from:boss" });
 ```
 
+> [!TIP]
+> **あなた*以外*の人向けに作っている、あるいはサーバーを自分で運用していますか?** このページはデフォルトの `Connector`(**あなた自身の**コネクションでアクションを実行)を扱います。同じパッケージには、姉妹クライアントがもう 2 つ含まれています:
+> - **[ユーザーのアカウントを接続する](#ユーザーのアカウントを接続する)** — `ProjectConnector`:あなたのエンドユーザーが*自分の* Gmail / Slack / GitHub / … アカウントをリンクし、あなたが彼らの代わりにアクションを実行します(composio / pipedream のマネージド認証モデル)。
+> - **[セルフホストランタイム](#セルフホストランタイム)** — `OpenConnector`:同じ型付きの呼び出しを、あなた自身がホストするオープンソースの Connector サーバーに向けます。
+
 ## API キーを取得する
 
 OOMOL Connector の API キー（`api_…` のような形式）が必要です。これを `OOMOL_API_KEY` に設定すれば準備完了です — SDK がローカルでキーを検証することはなく、リクエストごとにゲートウェイが認可します。
