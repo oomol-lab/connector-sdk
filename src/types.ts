@@ -60,6 +60,10 @@ export interface ProxyRequest {
   /**
    * Upstream endpoint: a path (resolved against the provider's base URL) OR a full URL — e.g. a
    * regional host like `https://eu.posthog.com/api/...`. Field name is `endpoint`, NOT `path`.
+   *
+   * Runtime caveat: the self-hosted `OpenConnector` accepts ONLY a relative path beginning with
+   * `/` and rejects absolute URLs (`invalid_input`). The full-URL form above is for the hosted
+   * `Connector` gateway.
    */
   endpoint: string;
   method: ProxyMethod;
