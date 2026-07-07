@@ -235,7 +235,7 @@ await user.execute("gmail.search_threads", { query: "from:ceo" });
 
 ## 自架執行環境
 
-自己在跑開源的 Connector 伺服器嗎（localhost、Docker、你自己的基礎設施）？**`OpenConnector`** 就是為它準備的個人用戶端——你熟悉的兩種呼叫路徑（除了 `proxy` 與 `using()` 之外的一切），指向你自己的伺服器：
+自己在跑開源的 Connector 伺服器嗎（localhost、Docker、你自己的基礎設施）？**`OpenConnector`** 就是為它準備的個人用戶端——你熟悉的整套呼叫面（除了 `using()` 之外的一切），指向你自己的伺服器：
 
 ```ts
 import { OpenConnector } from "@oomol-lab/connector";
@@ -244,6 +244,7 @@ const open = new OpenConnector(); // defaults to http://localhost:3000; a fresh 
 
 await open.execute("hackernews.get_top_stories", {}); // path 1 — dynamic string
 await open.gmail.search_threads({ query: "from:boss" }); // path 2 — namespace sugar, same registry types
+await open.proxy("github", { endpoint: "/user", method: "GET" }); // path 3 — passthrough (endpoint must be a relative path)
 await open.catalog.search("send email", { limit: 5 }); // runtime extras: search, services, health
 await open.apps.list();
 ```
@@ -258,7 +259,7 @@ const open = new OpenConnector({
 ```
 
 > [!NOTE]
-> Connection、憑證與 OAuth 設定都在執行環境的 **web console** 中管理——那屬於伺服器管理，刻意排除在這個 SDK 之外。用戶端只消費 console 所設定好的內容；connection 的選取有兩層（逐次呼叫的 `connectionName` 覆蓋用戶端層級的預設值——沒有 `using()` 範圍，也沒有 `organization`）。而且和託管用戶端一樣，當某個 service id 與成員名稱（`execute` / `executeRaw` / `health` / `catalog` / `apps`）衝突時，仍可透過 `execute("<service>.<action>", …)` 正常運作——只有它的 namespace sugar 會被遮蔽。
+> Connection、憑證與 OAuth 設定都在執行環境的 **web console** 中管理——那屬於伺服器管理，刻意排除在這個 SDK 之外。用戶端只消費 console 所設定好的內容；connection 的選取有兩層（逐次呼叫的 `connectionName` 覆蓋用戶端層級的預設值——沒有 `using()` 範圍，也沒有 `organization`）。而且和託管用戶端一樣，當某個 service id 與成員名稱（`execute` / `executeRaw` / `health` / `proxy` / `catalog` / `apps`）衝突時，仍可透過 `execute("<service>.<action>", …)` 正常運作——只有它的 namespace sugar 會被遮蔽。
 
 完整可執行導覽——[`examples/open.ts`](../../examples/open.ts)。
 

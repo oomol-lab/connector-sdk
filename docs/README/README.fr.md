@@ -235,7 +235,7 @@ Cycle de vie complet exécutable — [`examples/project.ts`](../../examples/proj
 
 ## Runtime auto-hébergé
 
-Vous faites tourner vous-même le serveur Connector open source (localhost, Docker, votre propre infrastructure) ? **`OpenConnector`** en est le client personnel — les deux voies d'appel que vous connaissez (tout sauf `proxy` et `using()`), pointées vers votre propre serveur :
+Vous faites tourner vous-même le serveur Connector open source (localhost, Docker, votre propre infrastructure) ? **`OpenConnector`** en est le client personnel — la même surface d'appel que vous connaissez (tout sauf `using()`), pointée vers votre propre serveur :
 
 ```ts
 import { OpenConnector } from "@oomol-lab/connector";
@@ -244,6 +244,7 @@ const open = new OpenConnector(); // defaults to http://localhost:3000; a fresh 
 
 await open.execute("hackernews.get_top_stories", {}); // path 1 — dynamic string
 await open.gmail.search_threads({ query: "from:boss" }); // path 2 — namespace sugar, same registry types
+await open.proxy("github", { endpoint: "/user", method: "GET" }); // path 3 — passthrough (endpoint must be a relative path)
 await open.catalog.search("send email", { limit: 5 }); // runtime extras: search, services, health
 await open.apps.list();
 ```
@@ -258,7 +259,7 @@ const open = new OpenConnector({
 ```
 
 > [!NOTE]
-> Les connexions, les identifiants et la configuration OAuth se gèrent dans la **console web** du runtime — il s'agit d'administration serveur, délibérément hors de ce SDK. Le client consomme ce que la console a configuré ; la sélection de connexion comporte deux couches (le `connectionName` par appel l'emporte sur la valeur par défaut au niveau du client — il n'y a ni portée `using()` ni `organization`). Et comme sur le client hébergé, un identifiant de service qui entre en collision avec un nom de membre (`execute` / `executeRaw` / `health` / `catalog` / `apps`) continue de fonctionner via `execute("<service>.<action>", …)` — seul son sucre de namespace est masqué.
+> Les connexions, les identifiants et la configuration OAuth se gèrent dans la **console web** du runtime — il s'agit d'administration serveur, délibérément hors de ce SDK. Le client consomme ce que la console a configuré ; la sélection de connexion comporte deux couches (le `connectionName` par appel l'emporte sur la valeur par défaut au niveau du client — il n'y a ni portée `using()` ni `organization`). Et comme sur le client hébergé, un identifiant de service qui entre en collision avec un nom de membre (`execute` / `executeRaw` / `health` / `proxy` / `catalog` / `apps`) continue de fonctionner via `execute("<service>.<action>", …)` — seul son sucre de namespace est masqué.
 
 Visite guidée complète exécutable — [`examples/open.ts`](../../examples/open.ts).
 

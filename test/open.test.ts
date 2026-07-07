@@ -238,12 +238,83 @@ describe("OpenConnector — apps", () => {
   });
 });
 
+describe("OpenConnector — proxy passthrough (path 3)", () => {
+  it("POSTs /v1/proxy/{service} with the request body and returns the envelope's ProxyResponse", async () => {
+    const { open, calls } = openRecorder(() =>
+      ok({ status: 200, headers: { "content-type": "application/json" }, data: { login: "octocat" } }),
+    );
+    const res = await open.proxy("github", {
+      endpoint: "/user",
+      method: "GET",
+      query: { per_page: 10 },
+    });
+
+    expect(calls[0]!.method).toBe("POST");
+    expect(calls[0]!.url).toBe(`${BASE}/v1/proxy/github`);
+    expect(calls[0]!.body).toEqual({ endpoint: "/user", method: "GET", query: { per_page: 10 } });
+    expect(res).toEqual({
+      status: 200,
+      headers: { "content-type": "application/json" },
+      data: { login: "octocat" },
+    });
+  });
+
+  it("encodes the service in the path", async () => {
+    const { open, calls } = openRecorder(() => ok({ status: 204, headers: {}, data: null }));
+    await open.proxy("github enterprise", { endpoint: "/x", method: "GET" });
+    expect(calls[0]!.url).toBe(`${BASE}/v1/proxy/github%20enterprise`);
+  });
+
+  it("carries the connection selector header, per-call name beating the client default", async () => {
+    const { open, calls } = openRecorder(() => ok({ status: 200, headers: {}, data: {} }), {
+      connectionName: "work",
+    });
+    await open.proxy("github", { endpoint: "/user", method: "GET" });
+    await open.proxy("github", { endpoint: "/user", method: "GET" }, { connectionName: "personal" });
+
+    expect(calls[0]!.headers["x-oo-connector-alias"]).toBe("work"); // client default
+    expect(calls[1]!.headers["x-oo-connector-alias"]).toBe("personal"); // per-call wins
+  });
+
+  it("sends no selector header when neither per-call nor client-level name is set", async () => {
+    const { open, calls } = openRecorder(() => ok({ status: 200, headers: {}, data: {} }));
+    await open.proxy("github", { endpoint: "/user", method: "GET" });
+    expect(calls[0]!.headers["x-oo-connector-alias"]).toBeUndefined();
+  });
+
+  it("passes a binary body through: surfaces `bodyEncoding: base64` from the runtime", async () => {
+    const { open } = openRecorder(() =>
+      ok({ status: 200, headers: { "content-type": "image/png" }, bodyEncoding: "base64", data: "aGk=" }),
+    );
+    const res = await open.proxy("github", { endpoint: "/avatar", method: "GET" });
+    expect(res.bodyEncoding).toBe("base64");
+    expect(res.data).toBe("aGk=");
+  });
+
+  it("maps a provider without a proxy executor to proxy_not_supported", async () => {
+    const { open } = openRecorder(() => fail("proxy_not_supported", 501), { maxRetries: 0 });
+    const err = await open.proxy("hackernews", { endpoint: "/x", method: "GET" }).catch((e) => e);
+    expect(err).toBeInstanceOf(ConnectorError);
+    expect(err.code).toBe("proxy_not_supported");
+    expect(err.status).toBe(501);
+  });
+
+  it("maps the runtime's non-envelope 401 on the proxy route just like other /v1 routes", async () => {
+    const { open } = openRecorder(() => runtimeFail("unauthorized", 401, "A valid local bearer token is required."));
+    await expect(open.proxy("github", { endpoint: "/user", method: "GET" })).rejects.toMatchObject({
+      code: "unauthorized",
+      status: 401,
+    });
+  });
+});
+
 describe("OpenConnector — service namespaces (path 2)", () => {
   it("constructor returns a Proxy; reserved members survive and are callable", () => {
     const { open } = openRecorder(() => ok({}));
     expect(typeof open.execute).toBe("function");
     expect(typeof open.executeRaw).toBe("function");
     expect(typeof open.health).toBe("function");
+    expect(typeof open.proxy).toBe("function");
     expect(typeof open.catalog).toBe("object");
     expect(typeof open.catalog.action).toBe("function");
     expect(typeof open.apps).toBe("object");
@@ -315,8 +386,12 @@ describe("OpenConnector — service namespaces (path 2)", () => {
     expect(() => {
       mutable.apps = 123;
     }).toThrow(TypeError);
+    expect(() => {
+      mutable.proxy = 123;
+    }).toThrow(TypeError);
     expect(typeof open.catalog.action).toBe("function");
     expect(typeof open.apps.list).toBe("function");
+    expect(typeof open.proxy).toBe("function");
   });
 });
 

@@ -72,6 +72,11 @@ export interface ProxyRequest {
 export interface ProxyResponse<T = unknown> {
   status: number;
   headers: Record<string, string>;
+  /**
+   * `"base64"` only when the upstream returned a BINARY body — `data` is then the base64-encoded
+   * bytes rather than parsed JSON/text. Absent for ordinary responses.
+   */
+  bodyEncoding?: "base64";
   data: T;
 }
 
