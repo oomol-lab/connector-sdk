@@ -235,7 +235,7 @@ Full runnable lifecycle — [`examples/project.ts`](./examples/project.ts).
 
 ## Self-hosted runtime
 
-Running the open-source Connector server yourself (localhost, Docker, your own infra)? **`OpenConnector`** is the personal client for it — both call paths you know (everything except `proxy` and `using()`), pointed at your own server:
+Running the open-source Connector server yourself (localhost, Docker, your own infra)? **`OpenConnector`** is the personal client for it — the same call surface you know (everything except `using()`), pointed at your own server:
 
 ```ts
 import { OpenConnector } from "@oomol-lab/connector";
@@ -244,6 +244,7 @@ const open = new OpenConnector(); // defaults to http://localhost:3000; a fresh 
 
 await open.execute("hackernews.get_top_stories", {}); // path 1 — dynamic string
 await open.gmail.search_threads({ query: "from:boss" }); // path 2 — namespace sugar, same registry types
+await open.proxy("github", { endpoint: "/user", method: "GET" }); // path 3 — passthrough (endpoint must be a relative path)
 await open.catalog.search("send email", { limit: 5 }); // runtime extras: search, services, health
 await open.apps.list();
 ```
@@ -258,7 +259,7 @@ const open = new OpenConnector({
 ```
 
 > [!NOTE]
-> Connections, credentials, and OAuth setup are managed in the runtime's **web console** — that's server administration, deliberately outside this SDK. The client consumes what the console configured; connection selection has two layers (per-call `connectionName` over the client-level default — there is no `using()` scope and no `organization`). And as on the hosted client, a service id that collides with a member name (`execute` / `executeRaw` / `health` / `catalog` / `apps`) keeps working through `execute("<service>.<action>", …)` — only its namespace sugar is shadowed.
+> Connections, credentials, and OAuth setup are managed in the runtime's **web console** — that's server administration, deliberately outside this SDK. The client consumes what the console configured; connection selection has two layers (per-call `connectionName` over the client-level default — there is no `using()` scope and no `organization`). And as on the hosted client, a service id that collides with a member name (`execute` / `executeRaw` / `health` / `proxy` / `catalog` / `apps`) keeps working through `execute("<service>.<action>", …)` — only its namespace sugar is shadowed.
 
 Full runnable tour — [`examples/open.ts`](./examples/open.ts).
 

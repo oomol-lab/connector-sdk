@@ -1,7 +1,7 @@
 // State 2 — B installed AND the action under test is registered (see ./augment.ts).
 // The registered action must be precise on both paths; wrong input must error.
 import { expectType, expectError } from "tsd";
-import { Connector, OpenConnector, ProjectConnector } from "@oomol-lab/connector";
+import { Connector, OpenConnector, ProjectConnector, type ProxyResponse } from "@oomol-lab/connector";
 import "./augment";
 
 const oomol = new Connector({ apiKey: "k" });
@@ -61,7 +61,10 @@ expectError(open.execute("gmail.search_threads", { query: "x" }, { organization:
 // Namespace options are the open-runtime ones: connectionName ok, `organization` rejected.
 open.gmail.search_threads({ query: "x" }, { connectionName: "work" });
 expectError(open.gmail.search_threads({ query: "x" }, { organization: "acme" }));
-// The open client has no hosted-only METHODS: a non-reserved name like `proxy` or `using`
-// resolves to a service NAMESPACE (an object), so calling it as a function must error.
-expectError(open.proxy("github", { endpoint: "/user", method: "GET" }));
+// `proxy` is now a real path-3 method on the open client (mirrors the hosted `Connector.proxy`) —
+// a reserved member, so it stays callable and returns the passthrough response.
+expectType<Promise<ProxyResponse>>(open.proxy("github", { endpoint: "/user", method: "GET" }));
+open.proxy("github", { endpoint: "/user", method: "GET" }, { connectionName: "work" });
+// But `using` remains hosted-only: a non-reserved name resolves to a service NAMESPACE (an object),
+// so calling it as a function must error.
 expectError(open.using({ connectionName: "work" }));

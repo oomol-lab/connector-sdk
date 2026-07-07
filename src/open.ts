@@ -4,8 +4,9 @@
  * The open-source backend is the self-hostable counterpart of the PERSONAL product: one user, one
  * server, running actions on that user's own connections. `OpenConnector` therefore mirrors the
  * core `Connector` surface — `execute` / `executeRaw` (path 1), the `open.<service>.<action>(...)`
- * namespace sugar (path 2, same two-layer Proxy), `catalog`, `apps` — plus the runtime's own
- * `health` probe and catalog extras (`search`, `services`, per-service apps).
+ * namespace sugar (path 2, same two-layer Proxy), the `proxy` upstream passthrough (path 3),
+ * `catalog`, `apps` — plus the runtime's own `health` probe and catalog extras (`search`,
+ * `services`, per-service apps).
  *
  * What it deliberately does NOT cover: the runtime's management API (creating connections, OAuth
  * client configs, minting tokens, run logs). Those are server administration, owned by the
@@ -29,7 +30,14 @@ import {
   type Transport,
 } from "./http";
 import type { ActionId, InputOf, OutputOf, ServiceNamespaces } from "./registry";
-import type { ConnectedApp, ProviderMetadata, ProviderQuery, RawResult } from "./types";
+import type {
+  ConnectedApp,
+  ProviderMetadata,
+  ProviderQuery,
+  ProxyRequest,
+  ProxyResponse,
+  RawResult,
+} from "./types";
 
 /**
  * Per-call options for open-runtime operations. No `organization` (the runtime is single-user);
@@ -148,6 +156,13 @@ export interface OpenConnectorApi {
   ): Promise<RawResult<OutputOf<A>>>;
   /** `GET /v1/health` — connectivity/auth probe. */
   health(options?: OpenCallOptions): Promise<OpenHealth>;
+  /**
+   * `POST /v1/proxy/{service}` passthrough — reach a provider endpoint the runtime hasn't modeled
+   * as an action, with the selected connection's credentials injected server-side. Unlike the
+   * hosted gateway, the runtime requires `endpoint` to be a RELATIVE path beginning with `/`
+   * (absolute URLs are rejected); providers without a proxy executor answer `proxy_not_supported`.
+   */
+  proxy<T = unknown>(service: string, req: ProxyRequest, options?: OpenExecuteOptions): Promise<ProxyResponse<T>>;
   /** Catalog / metadata introspection. */
   readonly catalog: OpenCatalogApi;
   /** Connected-app introspection (read-only). */
@@ -159,7 +174,7 @@ export interface OpenConnectorApi {
  * collides with one of these is still fully callable via `execute` — only its path-2 sugar is
  * shadowed (the same caveat the core `Connector` carries for its reserved names).
  */
-const RESERVED = new Set<string>(["execute", "executeRaw", "health", "catalog", "apps"]);
+const RESERVED = new Set<string>(["execute", "executeRaw", "health", "proxy", "catalog", "apps"]);
 
 /**
  * Build the second-layer Proxy for a service. Each property access returns a caller that
@@ -255,6 +270,21 @@ function createOpenApi(deps: OpenTransport): OpenConnectorApi {
     return envelope.data as OpenHealth;
   };
 
+  const proxy = async <T = unknown>(
+    service: string,
+    req: ProxyRequest,
+    options: OpenExecuteOptions = {},
+  ): Promise<ProxyResponse<T>> => {
+    const envelope = await deps.request("POST", `/v1/proxy/${encodeURIComponent(service)}`, {
+      body: req,
+      options,
+      // Same connection selector as execute (client-level default unless the call overrides it) —
+      // the runtime injects that connection's credentials into the upstream request.
+      connectionName: options.connectionName ?? deps.defaultConnectionName,
+    });
+    return envelope.data as ProxyResponse<T>;
+  };
+
   const catalog: OpenCatalogApi = {
     action: async (actionId, options) => {
       const envelope = await deps.request("GET", `/v1/actions/${encodeURIComponent(actionId)}`, {
@@ -309,7 +339,7 @@ function createOpenApi(deps: OpenTransport): OpenConnectorApi {
   // The sub-panels are frozen here; the constructor freezes the top level (after installing the
   // class prototype) so a stray assignment (`open.catalog = …`) throws instead of silently
   // replacing an API panel — matching how the hosted client's getter-only accessors reject it.
-  return { execute, executeRaw, health, catalog: Object.freeze(catalog), apps: Object.freeze(apps) };
+  return { execute, executeRaw, health, proxy, catalog: Object.freeze(catalog), apps: Object.freeze(apps) };
 }
 
 declare const __PKG_VERSION__: string;
@@ -444,8 +474,8 @@ class OpenConnectorImpl {
 /**
  * The open-source runtime client — point it at the self-hosted Connector server you run and use
  * it like the personal {@link Connector}: execute actions (both `open.execute(...)` and
- * `open.<service>.<action>(...)`), browse the catalog, inspect connected apps. Connections and
- * credentials are managed in the runtime's web console, not here.
+ * `open.<service>.<action>(...)`), proxy upstream endpoints, browse the catalog, inspect connected
+ * apps. Connections and credentials are managed in the runtime's web console, not here.
  */
 export const OpenConnector = OpenConnectorImpl as unknown as {
   new (config?: OpenConnectorConfig): OpenConnector;
@@ -453,7 +483,7 @@ export const OpenConnector = OpenConnectorImpl as unknown as {
 /**
  * An {@link OpenConnector} instance: methods + (precise/loose) service namespaces. The namespaces
  * carry this client's own per-call options (no `organization` — the runtime is single-user).
- * A service id colliding with a member name (`execute` / `executeRaw` / `health` / `catalog` /
- * `apps`) loses only its path-2 sugar — call it via `execute("<service>.<action>", …)`.
+ * A service id colliding with a member name (`execute` / `executeRaw` / `health` / `proxy` /
+ * `catalog` / `apps`) loses only its path-2 sugar — call it via `execute("<service>.<action>", …)`.
  */
 export type OpenConnector = OpenConnectorApi & ServiceNamespaces<OpenExecuteOptions>;

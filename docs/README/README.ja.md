@@ -235,7 +235,7 @@ await user.execute("gmail.search_threads", { query: "from:ceo" });
 
 ## セルフホストランタイム
 
-オープンソースの Connector サーバーを自分で運用していますか?（localhost、Docker、あなた自身のインフラ）**`OpenConnector`** はそのための個人向けクライアントです — おなじみの両方の呼び出しパス（`proxy` と `using()` を除くすべて）を、あなた自身のサーバーに向けます:
+オープンソースの Connector サーバーを自分で運用していますか?（localhost、Docker、あなた自身のインフラ）**`OpenConnector`** はそのための個人向けクライアントです — おなじみの呼び出し一式（`using()` を除くすべて）を、あなた自身のサーバーに向けます:
 
 ```ts
 import { OpenConnector } from "@oomol-lab/connector";
@@ -244,6 +244,7 @@ const open = new OpenConnector(); // defaults to http://localhost:3000; a fresh 
 
 await open.execute("hackernews.get_top_stories", {}); // path 1 — dynamic string
 await open.gmail.search_threads({ query: "from:boss" }); // path 2 — namespace sugar, same registry types
+await open.proxy("github", { endpoint: "/user", method: "GET" }); // path 3 — passthrough (endpoint must be a relative path)
 await open.catalog.search("send email", { limit: 5 }); // runtime extras: search, services, health
 await open.apps.list();
 ```
@@ -258,7 +259,7 @@ const open = new OpenConnector({
 ```
 
 > [!NOTE]
-> コネクション、認証情報、OAuth のセットアップは、ランタイムの **Web コンソール**で管理されます — これはサーバー管理であり、意図的にこの SDK の外に置かれています。クライアントはコンソールで設定された内容を利用します。コネクションの選択には2つの層があります（呼び出しごとの `connectionName` がクライアントレベルのデフォルトを上書きします — `using()` スコープも `organization` もありません）。そしてホスト型クライアントと同様に、メンバー名（`execute` / `executeRaw` / `health` / `catalog` / `apps`）と衝突するサービス id は、`execute("<service>.<action>", …)` を通じて動作し続けます — シャドウされるのはその名前空間シュガーだけです。
+> コネクション、認証情報、OAuth のセットアップは、ランタイムの **Web コンソール**で管理されます — これはサーバー管理であり、意図的にこの SDK の外に置かれています。クライアントはコンソールで設定された内容を利用します。コネクションの選択には2つの層があります（呼び出しごとの `connectionName` がクライアントレベルのデフォルトを上書きします — `using()` スコープも `organization` もありません）。そしてホスト型クライアントと同様に、メンバー名（`execute` / `executeRaw` / `health` / `proxy` / `catalog` / `apps`）と衝突するサービス id は、`execute("<service>.<action>", …)` を通じて動作し続けます — シャドウされるのはその名前空間シュガーだけです。
 
 完全に実行可能なツアーは [`examples/open.ts`](../../examples/open.ts) を参照。
 

@@ -2,7 +2,7 @@
  * OpenConnector — the personal client for the open-source, self-hosted Connector runtime.
  *
  * It mirrors the core `Connector` surface (execute + `open.<service>.<action>` namespace sugar,
- * catalog / apps / health) against the server YOU run. Connections and credentials are managed in
+ * proxy passthrough, catalog / apps / health) against the server YOU run. Connections and credentials are managed in
  * the runtime's web console — the SDK only consumes them. Auth is a single optional runtime token
  * (`oct_…`, minted in that console); a fresh instance answers without one.
  *
@@ -43,6 +43,12 @@ async function main() {
   console.log("user:", user);
   const raw = await open.executeRaw("github.get_current_user", {}, { connectionName: "work" });
   console.log("executionId:", raw.executionId);
+
+  // --- Proxy an endpoint that has no action yet ---------------------------------------------------
+  // Path 3 — reach a provider endpoint directly, credentials injected server-side. The runtime
+  // requires a RELATIVE `endpoint` (starting with `/`); pick a connection with `connectionName`.
+  const repos = await open.proxy("github", { endpoint: "/user/repos", method: "GET", query: { per_page: 5 } });
+  console.log("proxy status:", repos.status, "repos:", Array.isArray(repos.data) ? repos.data.length : repos.data);
 
   // --- Inspect what's connected ------------------------------------------------------------------
   const apps = await open.apps.list();

@@ -235,7 +235,7 @@ await user.execute("gmail.search_threads", { query: "from:ceo" });
 
 ## Самостоятельно размещаемая среда выполнения
 
-Запускаете сервер Connector с открытым исходным кодом самостоятельно (localhost, Docker, ваша собственная инфраструктура)? **`OpenConnector`** — это персональный клиент для него — оба знакомых вам пути вызова (всё, кроме `proxy` и `using()`), направленные на ваш собственный сервер:
+Запускаете сервер Connector с открытым исходным кодом самостоятельно (localhost, Docker, ваша собственная инфраструктура)? **`OpenConnector`** — это персональный клиент для него — тот же знакомый вам набор вызовов (всё, кроме `using()`), направленный на ваш собственный сервер:
 
 ```ts
 import { OpenConnector } from "@oomol-lab/connector";
@@ -244,6 +244,7 @@ const open = new OpenConnector(); // defaults to http://localhost:3000; a fresh 
 
 await open.execute("hackernews.get_top_stories", {}); // path 1 — dynamic string
 await open.gmail.search_threads({ query: "from:boss" }); // path 2 — namespace sugar, same registry types
+await open.proxy("github", { endpoint: "/user", method: "GET" }); // path 3 — passthrough (endpoint must be a relative path)
 await open.catalog.search("send email", { limit: 5 }); // runtime extras: search, services, health
 await open.apps.list();
 ```
@@ -258,7 +259,7 @@ const open = new OpenConnector({
 ```
 
 > [!NOTE]
-> Подключения, учётные данные и настройка OAuth управляются в **веб-консоли** среды выполнения — это администрирование сервера, намеренно вынесенное за пределы этого SDK. Клиент потребляет то, что настроено в консоли; выбор подключения имеет два уровня (`connectionName` на уровне вызова поверх значения по умолчанию на уровне клиента — здесь нет ни области `using()`, ни `organization`). И, как и на размещённом клиенте, идентификатор сервиса, совпадающий с именем члена (`execute` / `executeRaw` / `health` / `catalog` / `apps`), продолжает работать через `execute("<service>.<action>", …)` — затеняется только его синтаксический сахар пространства имён.
+> Подключения, учётные данные и настройка OAuth управляются в **веб-консоли** среды выполнения — это администрирование сервера, намеренно вынесенное за пределы этого SDK. Клиент потребляет то, что настроено в консоли; выбор подключения имеет два уровня (`connectionName` на уровне вызова поверх значения по умолчанию на уровне клиента — здесь нет ни области `using()`, ни `organization`). И, как и на размещённом клиенте, идентификатор сервиса, совпадающий с именем члена (`execute` / `executeRaw` / `health` / `proxy` / `catalog` / `apps`), продолжает работать через `execute("<service>.<action>", …)` — затеняется только его синтаксический сахар пространства имён.
 
 Полный запускаемый обзор — [`examples/open.ts`](../../examples/open.ts).
 
