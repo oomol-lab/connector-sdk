@@ -78,7 +78,7 @@ type ServiceName = ServiceNameOf<keyof ActionRegistry & string>;
  * Methods of one registered service, keyed by the action's local name. `O` is the per-call
  * options type of the CLIENT exposing the namespace — the hosted `Connector` passes its
  * `CallOptions` (the default), the self-hosted `OpenConnector` its narrower options (no
- * `organization`); the registry machinery itself is client-agnostic.
+ * `team`); the registry machinery itself is client-agnostic.
  */
 type ActionsOf<S extends string, O = CallOptions> = {
   [K in keyof ActionRegistry as K extends `${S}.${infer N}` ? N : never]: (

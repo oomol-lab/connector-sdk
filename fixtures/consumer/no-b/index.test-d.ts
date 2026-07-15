@@ -31,6 +31,6 @@ expectAssignable<Promise<Record<string, any>>>(open.anything.whatever());
 expectError(open.foo.bar(123)); // input is Record, not any
 expectError(open.execute("anything.x", 123)); // execute input is Record, not any
 expectError(open.execute(123, {})); // actionId must be a string
-// Its namespace options are the open-runtime ones — no `organization` (single-user server).
+// Its namespace options are the open-runtime ones — no `team` (single-user server).
 open.foo.bar({}, { connectionName: "work" });
-expectError(open.foo.bar({}, { organization: "acme" }));
+expectError(open.foo.bar({}, { team: "acme" }));

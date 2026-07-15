@@ -5,11 +5,11 @@ function url(u: string) {
   return new URL(u);
 }
 
-describe("M1 — organization / alias mapping", () => {
-  it("organization → x-oo-organization-name (per-call)", async () => {
+describe("M1 — team / alias mapping", () => {
+  it("team → x-oo-team-name (per-call)", async () => {
     const { oomol, calls } = recorder(() => ok({}));
-    await oomol.execute("svc.act", {}, { organization: "org-1" });
-    expect(calls[0]!.headers["x-oo-organization-name"]).toBe("org-1");
+    await oomol.execute("svc.act", {}, { team: "team-1" });
+    expect(calls[0]!.headers["x-oo-team-name"]).toBe("team-1");
   });
 
   it("alias → X-Oo-Connector-Alias header (never the query string)", async () => {
@@ -28,22 +28,30 @@ describe("M1 — option precedence (per-call > using() scope > client default)",
   });
 
   it("using() scope overrides client default; per-call overrides scope", async () => {
-    const { oomol, calls } = recorder(() => ok({}), { organization: "org-default" });
-    const scoped = oomol.using({ organization: "org-scope", connectionName: "scope-alias" });
+    const { oomol, calls } = recorder(() => ok({}), { team: "team-default" });
+    const scoped = oomol.using({ team: "team-scope", connectionName: "scope-alias" });
 
     await scoped.execute("svc.act", {});
-    expect(calls[0]!.headers["x-oo-organization-name"]).toBe("org-scope");
+    expect(calls[0]!.headers["x-oo-team-name"]).toBe("team-scope");
     expect(calls[0]!.headers["x-oo-connector-alias"]).toBe("scope-alias");
 
-    await scoped.execute("svc.act", {}, { organization: "org-call" });
-    expect(calls[1]!.headers["x-oo-organization-name"]).toBe("org-call");
+    await scoped.execute("svc.act", {}, { team: "team-call" });
+    expect(calls[1]!.headers["x-oo-team-name"]).toBe("team-call");
   });
 
   it("using() is immutable: the original client is unaffected", async () => {
-    const { oomol, calls } = recorder(() => ok({}), { organization: "org-default" });
-    oomol.using({ organization: "org-scope" });
+    const { oomol, calls } = recorder(() => ok({}), { team: "team-default" });
+    oomol.using({ team: "team-scope" });
     await oomol.execute("svc.act", {});
-    expect(calls[0]!.headers["x-oo-organization-name"]).toBe("org-default");
+    expect(calls[0]!.headers["x-oo-team-name"]).toBe("team-default");
+  });
+
+  it("a using() scope that omits team still inherits the client default", async () => {
+    const { oomol, calls } = recorder(() => ok({}), { team: "team-default" });
+    const scoped = oomol.using({ connectionName: "work" });
+    await scoped.execute("svc.act", {});
+    expect(calls[0]!.headers["x-oo-team-name"]).toBe("team-default");
+    expect(calls[0]!.headers["x-oo-connector-alias"]).toBe("work");
   });
 
   it("per-call alias overrides an inherited scope alias", async () => {

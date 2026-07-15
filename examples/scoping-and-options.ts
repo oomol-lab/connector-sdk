@@ -9,7 +9,7 @@ import { Connector } from "@oomol-lab/connector";
 const oomol = new Connector({
   apiKey: process.env.OOMOL_API_KEY!,
   baseUrl: "https://connector.oomol.com/v1", // default (production); override only if needed
-  organization: "acme",                      // default org name
+  team: "acme",                              // default team name
   connectionName: "work",                    // default connection name (prefer per-call / using())
   timeoutMs: 30_000,                         // default 30s
   maxRetries: 2,                             // default 2 (429 / 5xx / network → backoff + jitter)
@@ -18,7 +18,7 @@ const oomol = new Connector({
 
 async function main() {
   // `using()` returns an immutable sub-client with merged defaults; the original is unaffected.
-  const work = oomol.using({ connectionName: "work", organization: "acme" });
+  const work = oomol.using({ connectionName: "work", team: "acme" });
   await work.gmail.search_threads({ query: "label:urgent" });
 
   // Per-call options override scope + client defaults. Priority: per-call > using() > client.
@@ -26,8 +26,8 @@ async function main() {
     "gmail.search_threads",
     { query: "from:ceo" },
     {
-      organization: "acme",  // override default org for this call
-      connectionName: "alt",   // pick a different connection for this call
+      team: "acme",          // override default team for this call
+      connectionName: "alt", // pick a different connection for this call
       timeoutMs: 10_000,     // tighter timeout for this call
       retries: 0,            // disable retries for this call
     },

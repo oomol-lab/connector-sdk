@@ -11,8 +11,8 @@ export interface ClientConfig {
    * Only manual override is supported — there is no env-based auto-switching.
    */
   baseUrl?: string;
-  /** Client-level default organization name → `x-oo-organization-name`. */
-  organization?: string;
+  /** Client-level default team name → `x-oo-team-name`. */
+  team?: string;
   /** Client-level default connection name (weak semantics — see README; prefer per-call / `using()`). */
   connectionName?: string;
   /** Per-request timeout in ms. Default 30_000. */
@@ -25,8 +25,8 @@ export interface ClientConfig {
 
 /** Per-call options. Priority: per-call > `using()` scope > client default. */
 export interface CallOptions {
-  /** Override default organization name → `x-oo-organization-name`. */
-  organization?: string;
+  /** Override default team name → `x-oo-team-name`. */
+  team?: string;
   /** Override default connection name → `X-Oo-Connector-Alias`. */
   connectionName?: string;
   /** Abort signal forwarded to fetch. */
@@ -38,7 +38,7 @@ export interface CallOptions {
 }
 
 /** Scope accepted by `using()` — the subset of {@link CallOptions} that makes sense as a default. */
-export type ScopeOptions = Pick<CallOptions, "organization" | "connectionName">;
+export type ScopeOptions = Pick<CallOptions, "team" | "connectionName">;
 
 /** Raw result returned by `executeRaw`, exposing execution metadata. */
 export interface RawResult<T = unknown> {

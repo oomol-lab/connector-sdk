@@ -380,9 +380,9 @@ describe("ProjectConnector — headers", () => {
     await project.connect.oauth("user_42", { service: "gmail" });
 
     expect(calls[0]!.headers["authorization"]).toBe("Bearer oo_proj_secret");
-    // The project client never carries the personal connection selector nor an organization header.
+    // The project client never carries the personal connection selector nor a team header.
     expect(calls[0]!.headers["x-oo-connector-alias"]).toBeUndefined();
-    expect(calls[0]!.headers["x-oo-organization-name"]).toBeUndefined();
+    expect(calls[0]!.headers["x-oo-team-name"]).toBeUndefined();
     expect(calls[0]!.headers["content-type"]).toBe("application/json");
     expect(calls[0]!.headers["user-agent"]).toMatch(/^@oomol-lab\/connector\//);
   });

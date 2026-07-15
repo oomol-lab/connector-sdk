@@ -14,7 +14,7 @@
  *
  * Auth is a single OPTIONAL runtime token (`oct_…`, minted in the runtime's web console): a fresh
  * instance answers without any token, and once tokens exist the server enforces them. There is no
- * `oo_…` API key and no organization here — the server is yours.
+ * `oo_…` API key and no team here — the server is yours.
  *
  * Wire-name normalization: `/v1/apps*` responses spell the connection name `alias`; the SDK
  * surface speaks `connectionName` everywhere, matching the core `Connector`.
@@ -40,7 +40,7 @@ import type {
 } from "./types";
 
 /**
- * Per-call options for open-runtime operations. No `organization` (the runtime is single-user);
+ * Per-call options for open-runtime operations. No `team` (the runtime is single-user);
  * the connection selector rides on {@link OpenExecuteOptions.connectionName}.
  */
 export interface OpenCallOptions {
@@ -482,7 +482,7 @@ export const OpenConnector = OpenConnectorImpl as unknown as {
 };
 /**
  * An {@link OpenConnector} instance: methods + (precise/loose) service namespaces. The namespaces
- * carry this client's own per-call options (no `organization` — the runtime is single-user).
+ * carry this client's own per-call options (no `team` — the runtime is single-user).
  * A service id colliding with a member name (`execute` / `executeRaw` / `health` / `proxy` /
  * `catalog` / `apps`) loses only its path-2 sugar — call it via `execute("<service>.<action>", …)`.
  */

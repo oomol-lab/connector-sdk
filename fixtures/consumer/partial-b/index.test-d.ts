@@ -52,6 +52,6 @@ expectError(open.gmail.search_threads({})); // still errors: missing required `q
 expectType<Promise<Record<string, any>>>(open.gmail.brand_new_action({ anything: 1 }));
 expectType<Promise<Record<string, any>>>(open.notion.create_page({ title: "x" }));
 // BOTH loose fallbacks of the augmented branch carry the open-runtime options — a regression to
-// the default CallOptions would let the hosted-only `organization` slip through unnoticed.
-expectError(open.gmail.brand_new_action({ anything: 1 }, { organization: "acme" }));
-expectError(open.notion.create_page({ title: "x" }, { organization: "acme" }));
+// the default CallOptions would let the hosted-only `team` slip through unnoticed.
+expectError(open.gmail.brand_new_action({ anything: 1 }, { team: "acme" }));
+expectError(open.notion.create_page({ title: "x" }, { team: "acme" }));

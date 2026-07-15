@@ -57,10 +57,10 @@ expectError(open.gmail.search_threads({ query: 123 })); // wrong type
 // The execute path is its own declaration — guard it as strictly as the hosted one.
 expectError(open.execute("gmail.search_threads", {})); // missing required
 expectError(open.execute("gmail.search_threads", { query: 123 })); // wrong type
-expectError(open.execute("gmail.search_threads", { query: "x" }, { organization: "acme" }));
-// Namespace options are the open-runtime ones: connectionName ok, `organization` rejected.
+expectError(open.execute("gmail.search_threads", { query: "x" }, { team: "acme" }));
+// Namespace options are the open-runtime ones: connectionName ok, `team` rejected.
 open.gmail.search_threads({ query: "x" }, { connectionName: "work" });
-expectError(open.gmail.search_threads({ query: "x" }, { organization: "acme" }));
+expectError(open.gmail.search_threads({ query: "x" }, { team: "acme" }));
 // `proxy` is now a real path-3 method on the open client (mirrors the hosted `Connector.proxy`) —
 // a reserved member, so it stays callable and returns the passthrough response.
 expectType<Promise<ProxyResponse>>(open.proxy("github", { endpoint: "/user", method: "GET" }));
