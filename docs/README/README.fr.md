@@ -56,7 +56,7 @@ Aucune architecture à apprendre — seulement cinq mots, car tout le gros du tr
 - **Fournisseur / service** — une API tierce (`gmail`, `slack`, `github`, `notion`, …). C'est le préfixe `<service>` d'un identifiant d'action.
 - **Action** — une opération sur un fournisseur, identifiée par `"<service>.<action>"` (par ex. `gmail.search_threads`). Vous *appelez* les actions ; vous ne les définissez pas — elles vivent sur la passerelle.
 - **Connexion** — un identifiant stocké et déjà autorisé pour un fournisseur. Vous ne touchez jamais aux jetons ; vous nommez simplement la connexion à utiliser via `connectionName`. **OAuth et le cycle de vie des identifiants sont l'affaire de la passerelle, pas du SDK.**
-- **Organisation** — cloisonnement optionnel par locataire.
+- **Équipe** — cloisonnement optionnel par locataire.
 
 ## Ce que vous pouvez construire
 
@@ -78,7 +78,7 @@ La voie par chaîne dynamique compile pour **n'importe quel** `actionId`. Les ac
 Installez [`@oomol-lab/connector-types`](https://github.com/oomol-lab/connector-types) et ajoutez **un import à effet de bord par fournisseur** que vous utilisez :
 
 ```ts
-import "@oomol-lab/connector-types/gmail";   // précise types + JSDoc for gmail.*
+import "@oomol-lab/connector-types/gmail";   // precise types + JSDoc for gmail.*
 import "@oomol-lab/connector-types/slack";   // …and slack.*
 ```
 
@@ -93,7 +93,7 @@ Le runtime central ne dépend jamais du package de types, donc chaque action res
 new Connector({
   apiKey: process.env.OOMOL_API_KEY!,        // required
   baseUrl: "https://connector.oomol.com/v1", // default
-  organization: "org-name",                  // → x-oo-organization-name
+  team: "team-name",                         // → x-oo-team-name
   connectionName: "work",                    // default connection (prefer per-call / using())
   timeoutMs: 30_000,                         // default
   maxRetries: 2,                             // default; retries 429 / 5xx / network with backoff
@@ -101,10 +101,10 @@ new Connector({
 });
 ```
 
-- **`organization`** — sous quel locataire l'appel s'exécute.
+- **`team`** — sous quel locataire l'appel s'exécute.
 - **`connectionName`** — *quel* identifiant stocké utiliser lorsque vous avez plusieurs connexions pour un fournisseur.
 
-Les options par appel (`organization`, `connectionName`, `signal`, `timeoutMs`, `retries`) l'emportent sur une portée `using()`, qui l'emporte sur les valeurs par défaut du client :
+Les options par appel (`team`, `connectionName`, `signal`, `timeoutMs`, `retries`) l'emportent sur une portée `using()`, qui l'emporte sur les valeurs par défaut du client :
 
 ```ts
 const work = oomol.using({ connectionName: "work" }); // immutable scoped sub-client
@@ -259,7 +259,7 @@ const open = new OpenConnector({
 ```
 
 > [!NOTE]
-> Les connexions, les identifiants et la configuration OAuth se gèrent dans la **console web** du runtime — il s'agit d'administration serveur, délibérément hors de ce SDK. Le client consomme ce que la console a configuré ; la sélection de connexion comporte deux couches (le `connectionName` par appel l'emporte sur la valeur par défaut au niveau du client — il n'y a ni portée `using()` ni `organization`). Et comme sur le client hébergé, un identifiant de service qui entre en collision avec un nom de membre (`execute` / `executeRaw` / `health` / `proxy` / `catalog` / `apps`) continue de fonctionner via `execute("<service>.<action>", …)` — seul son sucre de namespace est masqué.
+> Les connexions, les identifiants et la configuration OAuth se gèrent dans la **console web** du runtime — il s'agit d'administration serveur, délibérément hors de ce SDK. Le client consomme ce que la console a configuré ; la sélection de connexion comporte deux couches (le `connectionName` par appel l'emporte sur la valeur par défaut au niveau du client — il n'y a ni portée `using()` ni `team`). Et comme sur le client hébergé, un identifiant de service qui entre en collision avec un nom de membre (`execute` / `executeRaw` / `health` / `proxy` / `catalog` / `apps`) continue de fonctionner via `execute("<service>.<action>", …)` — seul son sucre de namespace est masqué.
 
 Visite guidée complète exécutable — [`examples/open.ts`](../../examples/open.ts).
 

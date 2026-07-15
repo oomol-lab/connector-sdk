@@ -19,11 +19,11 @@ describe("M3 — apps connection introspection (read-only)", () => {
     expect("alias" in result[0]!).toBe(false);
   });
 
-  it("apps calls carry organization + auth like any other request", async () => {
-    const { oomol, calls } = recorder(() => ok([]), { organization: "org-1" });
+  it("apps calls carry team + auth like any other request", async () => {
+    const { oomol, calls } = recorder(() => ok([]), { team: "team-1" });
     await oomol.apps.list();
     expect(calls[0]!.headers["authorization"]).toBe("Bearer test-key");
-    expect(calls[0]!.headers["x-oo-organization-name"]).toBe("org-1");
+    expect(calls[0]!.headers["x-oo-team-name"]).toBe("team-1");
   });
 
   it("tolerates a null data payload, yielding an empty list", async () => {

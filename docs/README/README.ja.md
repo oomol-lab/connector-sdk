@@ -56,7 +56,7 @@ Node ≥ 18 が必要です（組み込みの `fetch` / `AbortController`）。�
 - **Provider / service（プロバイダー / サービス）** — サードパーティ API（`gmail`、`slack`、`github`、`notion`、…）。アクション id の `<service>` プレフィックスにあたります。
 - **Action（アクション）** — プロバイダー上の1つの操作で、`"<service>.<action>"`（例: `gmail.search_threads`）として識別されます。アクションは*呼び出す*ものであり、定義するものではありません — アクションはゲートウェイ上に存在します。
 - **Connection（コネクション）** — プロバイダー向けに保存済みの、認可済み認証情報。トークンに触れることは一切なく、`connectionName` でどのコネクションを使うか指定するだけです。**OAuth と認証情報のライフサイクルはゲートウェイの役割であり、SDK の役割ではありません。**
-- **Organization（組織）** — 任意のテナントスコープ指定。
+- **Team（チーム）** — 任意のテナントスコープ指定。
 
 ## 作れるもの
 
@@ -93,7 +93,7 @@ import "@oomol-lab/connector-types/slack";   // …and slack.*
 new Connector({
   apiKey: process.env.OOMOL_API_KEY!,        // required
   baseUrl: "https://connector.oomol.com/v1", // default
-  organization: "org-name",                  // → x-oo-organization-name
+  team: "team-name",                         // → x-oo-team-name
   connectionName: "work",                    // default connection (prefer per-call / using())
   timeoutMs: 30_000,                         // default
   maxRetries: 2,                             // default; retries 429 / 5xx / network with backoff
@@ -101,10 +101,10 @@ new Connector({
 });
 ```
 
-- **`organization`** — 呼び出しがどのテナントで実行されるか。
+- **`team`** — 呼び出しがどのテナントで実行されるか。
 - **`connectionName`** — 1つのプロバイダーに複数のコネクションがある場合に、*どの*保存済み認証情報を使うか。
 
-呼び出しごとのオプション（`organization`、`connectionName`、`signal`、`timeoutMs`、`retries`）は `using()` スコープを上書きし、`using()` スコープはクライアントのデフォルトを上書きします:
+呼び出しごとのオプション（`team`、`connectionName`、`signal`、`timeoutMs`、`retries`）は `using()` スコープを上書きし、`using()` スコープはクライアントのデフォルトを上書きします:
 
 ```ts
 const work = oomol.using({ connectionName: "work" }); // immutable scoped sub-client
@@ -259,7 +259,7 @@ const open = new OpenConnector({
 ```
 
 > [!NOTE]
-> コネクション、認証情報、OAuth のセットアップは、ランタイムの **Web コンソール**で管理されます — これはサーバー管理であり、意図的にこの SDK の外に置かれています。クライアントはコンソールで設定された内容を利用します。コネクションの選択には2つの層があります（呼び出しごとの `connectionName` がクライアントレベルのデフォルトを上書きします — `using()` スコープも `organization` もありません）。そしてホスト型クライアントと同様に、メンバー名（`execute` / `executeRaw` / `health` / `proxy` / `catalog` / `apps`）と衝突するサービス id は、`execute("<service>.<action>", …)` を通じて動作し続けます — シャドウされるのはその名前空間シュガーだけです。
+> コネクション、認証情報、OAuth のセットアップは、ランタイムの **Web コンソール**で管理されます — これはサーバー管理であり、意図的にこの SDK の外に置かれています。クライアントはコンソールで設定された内容を利用します。コネクションの選択には2つの層があります（呼び出しごとの `connectionName` がクライアントレベルのデフォルトを上書きします — `using()` スコープも `team` もありません）。そしてホスト型クライアントと同様に、メンバー名（`execute` / `executeRaw` / `health` / `proxy` / `catalog` / `apps`）と衝突するサービス id は、`execute("<service>.<action>", …)` を通じて動作し続けます — シャドウされるのはその名前空間シュガーだけです。
 
 完全に実行可能なツアーは [`examples/open.ts`](../../examples/open.ts) を参照。
 

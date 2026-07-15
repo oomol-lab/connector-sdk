@@ -183,7 +183,7 @@ describe("transport — header injection guard", () => {
   it("rejects CR/LF in a header value before sending, as a non-retryable client error", async () => {
     const { oomol, calls } = recorder(() => ok({}));
     await expect(
-      oomol.execute("svc.act", {}, { organization: "org\r\nX-Evil: 1" }),
+      oomol.execute("svc.act", {}, { team: "team\r\nX-Evil: 1" }),
     ).rejects.toMatchObject({ code: "client_invalid_request", status: 0 });
     expect(calls).toHaveLength(0);
   });

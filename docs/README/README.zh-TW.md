@@ -56,7 +56,7 @@ npm install @oomol-lab/connector   # or: bun add / pnpm add / yarn add
 - **Provider / service** — 一個第三方 API（`gmail`、`slack`、`github`、`notion`……）。它就是 action id 的 `<service>` 前綴。
 - **Action** — provider 上的一個操作，以 `"<service>.<action>"` 標識（例如 `gmail.search_threads`）。你只*呼叫* action，而不定義它們——它們都存在於 gateway 上。
 - **Connection** — 針對某個 provider、已授權並儲存起來的憑證。你完全不需碰 token；只要透過 `connectionName` 指名要使用哪個 connection 即可。**OAuth 與憑證的生命週期是 gateway 的工作，而非 SDK 的。**
-- **Organization** — 選用的租戶範圍限定。
+- **Team** — 選用的租戶範圍限定。
 
 ## 你可以打造什麼
 
@@ -93,7 +93,7 @@ import "@oomol-lab/connector-types/slack";   // …and slack.*
 new Connector({
   apiKey: process.env.OOMOL_API_KEY!,        // required
   baseUrl: "https://connector.oomol.com/v1", // default
-  organization: "org-name",                  // → x-oo-organization-name
+  team: "team-name",                         // → x-oo-team-name
   connectionName: "work",                    // default connection (prefer per-call / using())
   timeoutMs: 30_000,                         // default
   maxRetries: 2,                             // default; retries 429 / 5xx / network with backoff
@@ -101,10 +101,10 @@ new Connector({
 });
 ```
 
-- **`organization`** — 呼叫在哪個租戶下執行。
+- **`team`** — 呼叫在哪個租戶下執行。
 - **`connectionName`** — 當你對某個 provider 有多個 connection 時，指定要使用*哪一個*已儲存的憑證。
 
-逐次呼叫的選項（`organization`、`connectionName`、`signal`、`timeoutMs`、`retries`）會覆蓋 `using()` 範圍，而後者又會覆蓋用戶端的預設值：
+逐次呼叫的選項（`team`、`connectionName`、`signal`、`timeoutMs`、`retries`）會覆蓋 `using()` 範圍，而後者又會覆蓋用戶端的預設值：
 
 ```ts
 const work = oomol.using({ connectionName: "work" }); // immutable scoped sub-client
@@ -259,7 +259,7 @@ const open = new OpenConnector({
 ```
 
 > [!NOTE]
-> Connection、憑證與 OAuth 設定都在執行環境的 **web console** 中管理——那屬於伺服器管理，刻意排除在這個 SDK 之外。用戶端只消費 console 所設定好的內容；connection 的選取有兩層（逐次呼叫的 `connectionName` 覆蓋用戶端層級的預設值——沒有 `using()` 範圍，也沒有 `organization`）。而且和託管用戶端一樣，當某個 service id 與成員名稱（`execute` / `executeRaw` / `health` / `proxy` / `catalog` / `apps`）衝突時，仍可透過 `execute("<service>.<action>", …)` 正常運作——只有它的 namespace sugar 會被遮蔽。
+> Connection、憑證與 OAuth 設定都在執行環境的 **web console** 中管理——那屬於伺服器管理，刻意排除在這個 SDK 之外。用戶端只消費 console 所設定好的內容；connection 的選取有兩層（逐次呼叫的 `connectionName` 覆蓋用戶端層級的預設值——沒有 `using()` 範圍，也沒有 `team`）。而且和託管用戶端一樣，當某個 service id 與成員名稱（`execute` / `executeRaw` / `health` / `proxy` / `catalog` / `apps`）衝突時，仍可透過 `execute("<service>.<action>", …)` 正常運作——只有它的 namespace sugar 會被遮蔽。
 
 完整可執行導覽——[`examples/open.ts`](../../examples/open.ts)。
 

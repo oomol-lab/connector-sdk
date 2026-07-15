@@ -86,7 +86,7 @@ export type Connector = ConnectorMethods & ServiceNamespaces;
 interface ResolvedConfig {
   apiKey: string;
   baseUrl: string;
-  organization?: string;
+  team?: string;
   connectionName?: string;
   timeoutMs: number;
   maxRetries: number;
@@ -94,7 +94,7 @@ interface ResolvedConfig {
 
 /** Internal merged defaults applied per call (from `using()` scope). */
 interface ScopeDefaults {
-  organization?: string;
+  team?: string;
   connectionName?: string;
 }
 
@@ -133,7 +133,7 @@ class ConnectorImpl implements ConnectorMethods {
     this.#config = {
       apiKey: config.apiKey,
       baseUrl: (config.baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, ""),
-      organization: config.organization,
+      team: config.team,
       connectionName: config.connectionName,
       timeoutMs: config.timeoutMs ?? DEFAULT_TIMEOUT_MS,
       maxRetries: config.maxRetries ?? DEFAULT_MAX_RETRIES,
@@ -160,7 +160,7 @@ class ConnectorImpl implements ConnectorMethods {
   // --- option resolution ---
 
   #resolveCall(options?: CallOptions): {
-    organization?: string;
+    team?: string;
     connectionName?: string;
     signal?: AbortSignal;
     timeoutMs: number;
@@ -170,7 +170,7 @@ class ConnectorImpl implements ConnectorMethods {
     const scope = this.#scope;
 
     return {
-      organization: options?.organization ?? scope.organization ?? cfg.organization,
+      team: options?.team ?? scope.team ?? cfg.team,
       // Connection name, resolved with layer precedence (per-call > using() scope > client).
       connectionName: options?.connectionName ?? scope.connectionName ?? cfg.connectionName,
       signal: options?.signal,
@@ -204,7 +204,7 @@ class ConnectorImpl implements ConnectorMethods {
     headers["user-agent"] = USER_AGENT;
     headers["accept"] = "application/json";
     if (init.body !== undefined) headers["content-type"] = "application/json";
-    if (resolved.organization) headers["x-oo-organization-name"] = resolved.organization;
+    if (resolved.team) headers["x-oo-team-name"] = resolved.team;
 
     // Connection name selector — always carried as a client header (wire key stays `alias`).
     if (resolved.connectionName !== undefined) {
@@ -261,7 +261,7 @@ class ConnectorImpl implements ConnectorMethods {
 
   using(scope: ScopeOptions): Connector {
     const merged: ScopeDefaults = {
-      organization: scope.organization ?? this.#scope.organization,
+      team: scope.team ?? this.#scope.team,
       connectionName: scope.connectionName ?? this.#scope.connectionName,
     };
     return new ConnectorImpl(this.#sourceConfig(), merged, this.#transport) as unknown as Connector;
@@ -273,7 +273,7 @@ class ConnectorImpl implements ConnectorMethods {
     return {
       apiKey: cfg.apiKey,
       baseUrl: cfg.baseUrl,
-      organization: cfg.organization,
+      team: cfg.team,
       connectionName: cfg.connectionName,
       timeoutMs: cfg.timeoutMs,
       maxRetries: cfg.maxRetries,

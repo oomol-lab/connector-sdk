@@ -56,7 +56,7 @@ npm install @oomol-lab/connector   # or: bun add / pnpm add / yarn add
 - **Provider / service(提供方 / 服务)** — 一个第三方 API(`gmail`、`slack`、`github`、`notion`……)。它就是 action id 中的 `<service>` 前缀。
 - **Action** — 提供方上的一个操作,以 `"<service>.<action>"` 标识(例如 `gmail.search_threads`)。你*调用* action,而不*定义*它们——它们存在于网关上。
 - **Connection(连接)** — 某个提供方已存储、已授权的凭证。你从不接触令牌;只需通过 `connectionName` 指定要使用哪个连接。**OAuth 与凭证生命周期是网关的职责,而非 SDK 的。**
-- **Organization(组织)** — 可选的租户范围限定。
+- **Team(团队)** — 可选的租户范围限定。
 
 ## 你能构建什么
 
@@ -93,7 +93,7 @@ import "@oomol-lab/connector-types/slack";   // …and slack.*
 new Connector({
   apiKey: process.env.OOMOL_API_KEY!,        // required
   baseUrl: "https://connector.oomol.com/v1", // default
-  organization: "org-name",                  // → x-oo-organization-name
+  team: "team-name",                         // → x-oo-team-name
   connectionName: "work",                    // default connection (prefer per-call / using())
   timeoutMs: 30_000,                         // default
   maxRetries: 2,                             // default; retries 429 / 5xx / network with backoff
@@ -101,10 +101,10 @@ new Connector({
 });
 ```
 
-- **`organization`** — 调用在哪个租户下运行。
+- **`team`** — 调用在哪个租户下运行。
 - **`connectionName`** — 当某个提供方有多个连接时,指定使用*哪个*已存储的凭证。
 
-按调用传入的选项(`organization`、`connectionName`、`signal`、`timeoutMs`、`retries`)会覆盖 `using()` 作用域,而后者又会覆盖客户端默认值:
+按调用传入的选项(`team`、`connectionName`、`signal`、`timeoutMs`、`retries`)会覆盖 `using()` 作用域,而后者又会覆盖客户端默认值:
 
 ```ts
 const work = oomol.using({ connectionName: "work" }); // immutable scoped sub-client
@@ -259,7 +259,7 @@ const open = new OpenConnector({
 ```
 
 > [!NOTE]
-> 连接、凭证与 OAuth 配置都在运行时的 **Web 控制台**中管理——那属于服务端管理,有意排除在本 SDK 之外。客户端消费控制台所配置的内容;连接选择有两层(按调用的 `connectionName` 覆盖客户端级默认值——没有 `using()` 作用域,也没有 `organization`)。而且与托管客户端一样,当某个 service id 与成员名(`execute` / `executeRaw` / `health` / `proxy` / `catalog` / `apps`)冲突时,仍可通过 `execute("<service>.<action>", …)` 正常工作——只是它的命名空间语法糖会被遮蔽。
+> 连接、凭证与 OAuth 配置都在运行时的 **Web 控制台**中管理——那属于服务端管理,有意排除在本 SDK 之外。客户端消费控制台所配置的内容;连接选择有两层(按调用的 `connectionName` 覆盖客户端级默认值——没有 `using()` 作用域,也没有 `team`)。而且与托管客户端一样,当某个 service id 与成员名(`execute` / `executeRaw` / `health` / `proxy` / `catalog` / `apps`)冲突时,仍可通过 `execute("<service>.<action>", …)` 正常工作——只是它的命名空间语法糖会被遮蔽。
 
 完整可运行的示例导览见 [`examples/open.ts`](../../examples/open.ts)。
 

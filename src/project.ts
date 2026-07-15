@@ -29,7 +29,7 @@ import type { RawResult } from "./types";
 
 /**
  * Per-call options for project operations. Independent of the core `CallOptions`: a project client is
- * scoped to its project by the API key, so there is no `organization` (derived from the key) and no
+ * scoped to its project by the API key, so there is no `team` (derived from the key) and no
  * `connectionName` default (an account is selected per call via a request-BODY field, not a header).
  */
 export interface ProjectCallOptions {
@@ -493,7 +493,7 @@ interface ResolvedProjectConfig {
   maxRetries: number;
 }
 
-/** Assemble one project request: project-key auth + standard headers (NO org / connector-alias). */
+/** Assemble one project request: project-key auth + standard headers (NO team / connector-alias). */
 function buildProjectSpec(
   cfg: ResolvedProjectConfig,
   method: "GET" | "POST",

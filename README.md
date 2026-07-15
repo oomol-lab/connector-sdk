@@ -56,7 +56,7 @@ No architecture to learn — just five words, because all the heavy lifting happ
 - **Provider / service** — a third-party API (`gmail`, `slack`, `github`, `notion`, …). It's the `<service>` prefix of an action id.
 - **Action** — one operation on a provider, identified as `"<service>.<action>"` (e.g. `gmail.search_threads`). You *call* actions; you don't define them — they live on the gateway.
 - **Connection** — a stored, already-authorized credential for a provider. You never touch tokens; you just name which connection to use via `connectionName`. **OAuth and credential lifecycle are the gateway's job, not the SDK's.**
-- **Organization** — optional tenant scoping.
+- **Team** — optional tenant scoping.
 
 ## What you can build
 
@@ -93,7 +93,7 @@ The core runtime never depends on the types package, so every action stays at le
 new Connector({
   apiKey: process.env.OOMOL_API_KEY!,        // required
   baseUrl: "https://connector.oomol.com/v1", // default
-  organization: "org-name",                  // → x-oo-organization-name
+  team: "team-name",                         // → x-oo-team-name
   connectionName: "work",                    // default connection (prefer per-call / using())
   timeoutMs: 30_000,                         // default
   maxRetries: 2,                             // default; retries 429 / 5xx / network with backoff
@@ -101,10 +101,10 @@ new Connector({
 });
 ```
 
-- **`organization`** — which tenant the call runs under.
+- **`team`** — which tenant the call runs under.
 - **`connectionName`** — *which* stored credential to use when you have more than one connection for a provider.
 
-Per-call options (`organization`, `connectionName`, `signal`, `timeoutMs`, `retries`) override a `using()` scope, which overrides client defaults:
+Per-call options (`team`, `connectionName`, `signal`, `timeoutMs`, `retries`) override a `using()` scope, which overrides client defaults:
 
 ```ts
 const work = oomol.using({ connectionName: "work" }); // immutable scoped sub-client
@@ -259,7 +259,7 @@ const open = new OpenConnector({
 ```
 
 > [!NOTE]
-> Connections, credentials, and OAuth setup are managed in the runtime's **web console** — that's server administration, deliberately outside this SDK. The client consumes what the console configured; connection selection has two layers (per-call `connectionName` over the client-level default — there is no `using()` scope and no `organization`). And as on the hosted client, a service id that collides with a member name (`execute` / `executeRaw` / `health` / `proxy` / `catalog` / `apps`) keeps working through `execute("<service>.<action>", …)` — only its namespace sugar is shadowed.
+> Connections, credentials, and OAuth setup are managed in the runtime's **web console** — that's server administration, deliberately outside this SDK. The client consumes what the console configured; connection selection has two layers (per-call `connectionName` over the client-level default — there is no `using()` scope and no `team`). And as on the hosted client, a service id that collides with a member name (`execute` / `executeRaw` / `health` / `proxy` / `catalog` / `apps`) keeps working through `execute("<service>.<action>", …)` — only its namespace sugar is shadowed.
 
 Full runnable tour — [`examples/open.ts`](./examples/open.ts).
 
