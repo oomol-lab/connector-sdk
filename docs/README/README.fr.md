@@ -194,6 +194,15 @@ const account = await project.connect.apiKey("user_42", { service: "openai", api
 await project.connect.customCredential("user_42", { service: "jira", values: { email, token } });
 ```
 
+### Sous quel compte se sont-ils connectés ?
+
+```ts
+// The third-party account holder behind a connected account — provider id, handle, display name,
+// avatar, email (when the granted scopes expose it). Perfect for a "connected as …" UI.
+const { service, profile, fetchedAt } = await project.getUserProfile(account.connectedAccountId);
+console.log(`${service}: ${profile.displayName ?? profile.username} <${profile.email}>`);
+```
+
 ### Exécuter au nom de l'utilisateur
 
 ```ts
@@ -276,7 +285,7 @@ Visite guidée complète exécutable — [`examples/open.ts`](../../examples/ope
 - **`oomol.catalog.action / .actions / .providers`** — JSON Schema d'exécution pour interfaces dynamiques, validation ou outils LLM.
 - **`oomol.apps.list()`** — introspection en lecture seule de vos applications connectées.
 - **`oomol.executeRaw(...)`** — comme `execute`, mais renvoie `{ data, executionId, actionId, message }`.
-- **`ProjectConnector`** — un client distinct (clé API de projet) pour bâtir une plateforme SaaS : `connect.oauth` / `connect.apiKey` / `connect.customCredential`, `waitForConnection`, `execute` / `executeRaw` au nom d'un utilisateur, et `forUser` pour cibler un seul utilisateur. Voir [Connecter les comptes de vos utilisateurs](#connecter-les-comptes-de-vos-utilisateurs).
+- **`ProjectConnector`** — un client distinct (clé API de projet) pour bâtir une plateforme SaaS : `connect.oauth` / `connect.apiKey` / `connect.customCredential`, `waitForConnection`, `getUserProfile` pour lire l'identité de l'utilisateur côté fournisseur, `execute` / `executeRaw` au nom d'un utilisateur, et `forUser` pour cibler un seul utilisateur. Voir [Connecter les comptes de vos utilisateurs](#connecter-les-comptes-de-vos-utilisateurs).
 - **`OpenConnector`** — le client personnel pour le runtime open source auto-hébergé : les deux voies d'appel (`execute` et `open.<service>.<action>`), `catalog` / `apps` (+ `health`, `catalog.search` / `.services`, `apps.listByService` / `.authenticated`), authentifié par un jeton de runtime optionnel. Voir [Runtime auto-hébergé](#runtime-auto-hébergé).
 
 Consultez [`examples/`](../../examples) pour un usage exécutable et vérifié par typage de chaque méthode.

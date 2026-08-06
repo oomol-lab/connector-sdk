@@ -194,6 +194,15 @@ const account = await project.connect.apiKey("user_42", { service: "openai", api
 await project.connect.customCredential("user_42", { service: "jira", values: { email, token } });
 ```
 
+### どのアカウントで接続したか
+
+```ts
+// The third-party account holder behind a connected account — provider id, handle, display name,
+// avatar, email (when the granted scopes expose it). Perfect for a "connected as …" UI.
+const { service, profile, fetchedAt } = await project.getUserProfile(account.connectedAccountId);
+console.log(`${service}: ${profile.displayName ?? profile.username} <${profile.email}>`);
+```
+
 ### ユーザーの代わりに実行する
 
 ```ts
@@ -276,7 +285,7 @@ const open = new OpenConnector({
 - **`oomol.catalog.action / .actions / .providers`** — 動的 UI、バリデーション、または LLM ツール向けのランタイム JSON Schema。
 - **`oomol.apps.list()`** — 接続済みアプリの読み取り専用イントロスペクション。
 - **`oomol.executeRaw(...)`** — `execute` と同様ですが、`{ data, executionId, actionId, message }` を返します。
-- **`ProjectConnector`** — SaaS プラットフォームを構築するための別クライアント（プロジェクト API キー）: `connect.oauth` / `connect.apiKey` / `connect.customCredential`、`waitForConnection`、ユーザーの代わりに実行する `execute` / `executeRaw`、そして1人のユーザーにスコープする `forUser`。[ユーザーのアカウントを接続する](#ユーザーのアカウントを接続する)を参照。
+- **`ProjectConnector`** — SaaS プラットフォームを構築するための別クライアント（プロジェクト API キー）: `connect.oauth` / `connect.apiKey` / `connect.customCredential`、`waitForConnection`、プロバイダー側のユーザー情報を読む `getUserProfile`、ユーザーの代わりに実行する `execute` / `executeRaw`、そして1人のユーザーにスコープする `forUser`。[ユーザーのアカウントを接続する](#ユーザーのアカウントを接続する)を参照。
 - **`OpenConnector`** — オープンソースのセルフホストランタイム向けの個人用クライアント: 両方の呼び出しパス（`execute` と `open.<service>.<action>`）、`catalog` / `apps`（＋ `health`、`catalog.search` / `.services`、`apps.listByService` / `.authenticated`）、任意のランタイムトークンで認証されます。[セルフホストランタイム](#セルフホストランタイム)を参照。
 
 すべてのメソッドの実行可能で型チェック済みの使用例は [`examples/`](../../examples) を参照してください。

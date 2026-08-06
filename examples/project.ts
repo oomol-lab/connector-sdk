@@ -44,6 +44,14 @@ async function main() {
   });
   console.log("connected account:", account.connectedAccountId, "available:", account.available);
 
+  // --- Who is the end-user on the provider? -------------------------------------------------------
+  // Read the third-party account holder behind a connected account: provider id, handle, display
+  // name, avatar and email (when the granted scopes expose it) — normalized across providers. Show
+  // it as "connected as …" in your UI. Fields the provider doesn't expose come back as `null`.
+  const { service, profile, fetchedAt } = await project.getUserProfile(account.connectedAccountId);
+  console.log(`${service}: ${profile.displayName ?? profile.username} <${profile.email}>`, profile.avatarUrl);
+  console.log("fetched at:", new Date(fetchedAt).toISOString(), "kind:", profile.kind);
+
   // --- Execute an action on the user's behalf -----------------------------------------------------
   // The provider service is derived from the actionId prefix ("gmail"); the user's latest active
   // account is used unless you pass `connectionName` / `connectedAccountId`.

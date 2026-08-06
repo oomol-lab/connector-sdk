@@ -194,6 +194,15 @@ const account = await project.connect.apiKey("user_42", { service: "openai", api
 await project.connect.customCredential("user_42", { service: "jira", values: { email, token } });
 ```
 
+### 用户连接的是哪个第三方账户
+
+```ts
+// The third-party account holder behind a connected account — provider id, handle, display name,
+// avatar, email (when the granted scopes expose it). Perfect for a "connected as …" UI.
+const { service, profile, fetchedAt } = await project.getUserProfile(account.connectedAccountId);
+console.log(`${service}: ${profile.displayName ?? profile.username} <${profile.email}>`);
+```
+
 ### 代表用户执行
 
 ```ts
@@ -276,7 +285,7 @@ const open = new OpenConnector({
 - **`oomol.catalog.action / .actions / .providers`** — 用于动态 UI、校验或 LLM 工具的运行时 JSON Schema。
 - **`oomol.apps.list()`** — 对你已连接应用的只读检视。
 - **`oomol.executeRaw(...)`** — 与 `execute` 类似,但返回 `{ data, executionId, actionId, message }`。
-- **`ProjectConnector`** — 一个独立的客户端(项目 API 密钥),用于构建 SaaS 平台:`connect.oauth` / `connect.apiKey` / `connect.customCredential`、`waitForConnection`、代表用户的 `execute` / `executeRaw`,以及用于限定到单个用户的 `forUser`。参见[为你的用户连接账户](#为你的用户连接账户)。
+- **`ProjectConnector`** — 一个独立的客户端(项目 API 密钥),用于构建 SaaS 平台:`connect.oauth` / `connect.apiKey` / `connect.customCredential`、`waitForConnection`、用于读取用户在第三方平台身份的 `getUserProfile`、代表用户的 `execute` / `executeRaw`,以及用于限定到单个用户的 `forUser`。参见[为你的用户连接账户](#为你的用户连接账户)。
 - **`OpenConnector`** — 面向开源自托管运行时的个人客户端:两种调用路径(`execute` 与 `open.<service>.<action>`)、`catalog` / `apps`(外加 `health`、`catalog.search` / `.services`、`apps.listByService` / `.authenticated`),由一个可选的运行时令牌进行认证。参见[自托管运行时](#自托管运行时)。
 
 每个方法的可运行、经过类型检查的用法见 [`examples/`](../../examples)。
