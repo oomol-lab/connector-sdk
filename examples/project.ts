@@ -49,7 +49,7 @@ async function main() {
   // name, avatar and email (when the granted scopes expose it) — normalized across providers. Show
   // it as "connected as …" in your UI. Fields the provider doesn't expose come back as `null`.
   const { service, profile, fetchedAt } = await project.getUserProfile(account.connectedAccountId);
-  console.log(`${service}: ${profile.displayName ?? profile.username} <${profile.email}>`, profile.avatarUrl);
+  console.log(`${service}: ${profile.displayName ?? profile.username}`, profile.avatarUrl);
   console.log("fetched at:", new Date(fetchedAt).toISOString(), "kind:", profile.kind);
 
   // --- Execute an action on the user's behalf -----------------------------------------------------

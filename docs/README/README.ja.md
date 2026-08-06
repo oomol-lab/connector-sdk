@@ -200,7 +200,7 @@ await project.connect.customCredential("user_42", { service: "jira", values: { e
 // The third-party account holder behind a connected account — provider id, handle, display name,
 // avatar, email (when the granted scopes expose it). Perfect for a "connected as …" UI.
 const { service, profile, fetchedAt } = await project.getUserProfile(account.connectedAccountId);
-console.log(`${service}: ${profile.displayName ?? profile.username} <${profile.email}>`);
+console.log(`${service}: ${profile.displayName ?? profile.username}`);
 ```
 
 ### ユーザーの代わりに実行する
