@@ -194,6 +194,15 @@ const account = await project.connect.apiKey("user_42", { service: "openai", api
 await project.connect.customCredential("user_42", { service: "jira", values: { email, token } });
 ```
 
+### Who did they connect as?
+
+```ts
+// The third-party account holder behind a connected account — provider id, handle, display name,
+// avatar, email (when the granted scopes expose it). Perfect for a "connected as …" UI.
+const { service, profile, fetchedAt } = await project.getUserProfile(account.connectedAccountId);
+console.log(`${service}: ${profile.displayName ?? profile.username}`);
+```
+
 ### Execute on the user's behalf
 
 ```ts
@@ -276,7 +285,7 @@ Full runnable tour — [`examples/open.ts`](./examples/open.ts).
 - **`oomol.catalog.action / .actions / .providers`** — runtime JSON Schema for dynamic UIs, validation, or LLM tools.
 - **`oomol.apps.list()`** — read-only introspection of your connected apps.
 - **`oomol.executeRaw(...)`** — like `execute`, but returns `{ data, executionId, actionId, message }`.
-- **`ProjectConnector`** — a separate client (project API key) to build a SaaS platform: `connect.oauth` / `connect.apiKey` / `connect.customCredential`, `waitForConnection`, `execute` / `executeRaw` on a user's behalf, and `forUser` to scope to one user. See [Connect accounts for your users](#connect-accounts-for-your-users).
+- **`ProjectConnector`** — a separate client (project API key) to build a SaaS platform: `connect.oauth` / `connect.apiKey` / `connect.customCredential`, `waitForConnection`, `getUserProfile` to read who the user is on the provider, `execute` / `executeRaw` on a user's behalf, and `forUser` to scope to one user. See [Connect accounts for your users](#connect-accounts-for-your-users).
 - **`OpenConnector`** — the personal client for the open-source self-hosted runtime: both call paths (`execute` and `open.<service>.<action>`), `catalog` / `apps` (+ `health`, `catalog.search` / `.services`, `apps.listByService` / `.authenticated`), authenticated by an optional runtime token. See [Self-hosted runtime](#self-hosted-runtime).
 
 See [`examples/`](./examples) for runnable, type-checked usage of every method.

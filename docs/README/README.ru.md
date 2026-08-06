@@ -194,6 +194,15 @@ const account = await project.connect.apiKey("user_42", { service: "openai", api
 await project.connect.customCredential("user_42", { service: "jira", values: { email, token } });
 ```
 
+### Под каким аккаунтом они подключились?
+
+```ts
+// The third-party account holder behind a connected account — provider id, handle, display name,
+// avatar, email (when the granted scopes expose it). Perfect for a "connected as …" UI.
+const { service, profile, fetchedAt } = await project.getUserProfile(account.connectedAccountId);
+console.log(`${service}: ${profile.displayName ?? profile.username}`);
+```
+
 ### Выполнение от имени пользователя
 
 ```ts
@@ -276,7 +285,7 @@ const open = new OpenConnector({
 - **`oomol.catalog.action / .actions / .providers`** — JSON Schema во время выполнения для динамических интерфейсов, валидации или инструментов LLM.
 - **`oomol.apps.list()`** — интроспекция только для чтения ваших подключённых приложений.
 - **`oomol.executeRaw(...)`** — как `execute`, но возвращает `{ data, executionId, actionId, message }`.
-- **`ProjectConnector`** — отдельный клиент (ключ API проекта) для построения SaaS-платформы: `connect.oauth` / `connect.apiKey` / `connect.customCredential`, `waitForConnection`, `execute` / `executeRaw` от имени пользователя и `forUser` для ограничения областью одного пользователя. См. [Подключение аккаунтов для ваших пользователей](#подключение-аккаунтов-для-ваших-пользователей).
+- **`ProjectConnector`** — отдельный клиент (ключ API проекта) для построения SaaS-платформы: `connect.oauth` / `connect.apiKey` / `connect.customCredential`, `waitForConnection`, `getUserProfile` для чтения личности пользователя на стороне провайдера, `execute` / `executeRaw` от имени пользователя и `forUser` для ограничения областью одного пользователя. См. [Подключение аккаунтов для ваших пользователей](#подключение-аккаунтов-для-ваших-пользователей).
 - **`OpenConnector`** — персональный клиент для самостоятельно размещаемой среды выполнения с открытым исходным кодом: оба пути вызова (`execute` и `open.<service>.<action>`), `catalog` / `apps` (+ `health`, `catalog.search` / `.services`, `apps.listByService` / `.authenticated`), с аутентификацией по необязательному токену среды выполнения. См. [Самостоятельно размещаемая среда выполнения](#самостоятельно-размещаемая-среда-выполнения).
 
 Смотрите [`examples/`](../../examples) для запускаемых, проверенных типами примеров использования каждого метода.

@@ -194,6 +194,15 @@ const account = await project.connect.apiKey("user_42", { service: "openai", api
 await project.connect.customCredential("user_42", { service: "jira", values: { email, token } });
 ```
 
+### 使用者連接的是哪個第三方帳號
+
+```ts
+// The third-party account holder behind a connected account — provider id, handle, display name,
+// avatar, email (when the granted scopes expose it). Perfect for a "connected as …" UI.
+const { service, profile, fetchedAt } = await project.getUserProfile(account.connectedAccountId);
+console.log(`${service}: ${profile.displayName ?? profile.username}`);
+```
+
 ### 代表使用者執行
 
 ```ts
@@ -276,7 +285,7 @@ const open = new OpenConnector({
 - **`oomol.catalog.action / .actions / .providers`** — 供動態 UI、驗證或 LLM 工具使用的執行期 JSON Schema。
 - **`oomol.apps.list()`** — 對你已連接的應用進行唯讀檢視。
 - **`oomol.executeRaw(...)`** — 與 `execute` 類似，但會回傳 `{ data, executionId, actionId, message }`。
-- **`ProjectConnector`** — 一個獨立的用戶端（project API 金鑰），用來打造 SaaS 平台：`connect.oauth` / `connect.apiKey` / `connect.customCredential`、`waitForConnection`、代表使用者的 `execute` / `executeRaw`，以及用來限定於單一使用者的 `forUser`。參見[為你的使用者連接帳號](#為你的使用者連接帳號)。
+- **`ProjectConnector`** — 一個獨立的用戶端（project API 金鑰），用來打造 SaaS 平台：`connect.oauth` / `connect.apiKey` / `connect.customCredential`、`waitForConnection`、用來讀取使用者在第三方平台身分的 `getUserProfile`、代表使用者的 `execute` / `executeRaw`，以及用來限定於單一使用者的 `forUser`。參見[為你的使用者連接帳號](#為你的使用者連接帳號)。
 - **`OpenConnector`** — 供開源自架執行環境使用的個人用戶端：兩種呼叫路徑（`execute` 與 `open.<service>.<action>`）、`catalog` / `apps`（外加 `health`、`catalog.search` / `.services`、`apps.listByService` / `.authenticated`），以選用的執行環境 token 驗證。參見[自架執行環境](#自架執行環境)。
 
 每個方法的可執行、經型別檢查的用法，請見 [`examples/`](../../examples)。

@@ -113,6 +113,45 @@ export interface ConnectedAccount {
 }
 
 /**
+ * What kind of principal a provider profile represents. Open union (`| (string & {})`) for the same
+ * forward-compatibility reason as {@link ConnectedAccountStatus}.
+ */
+export type ProviderUserKind = "user" | "bot" | "service_account" | "unknown" | (string & {});
+
+/**
+ * The third-party account holder behind a connected account, normalized by the gateway into one
+ * shape across every provider. Fields the provider doesn't expose (or that the granted scopes don't
+ * cover — `email` most often) come back as `null`, never absent.
+ */
+export interface ProviderUserProfile {
+  /** Stable provider-side user id. */
+  id: string;
+  kind: ProviderUserKind;
+  /** Provider username / handle, or `null`. */
+  username: string | null;
+  /** Human-readable provider display name, or `null`. */
+  displayName: string | null;
+  avatarUrl: string | null;
+  /** Provider email, or `null` when the granted scopes don't expose it. */
+  email: string | null;
+  /** Provider-specific fields the gateway explicitly exposes; the shape varies per provider. */
+  metadata: Record<string, unknown>;
+}
+
+/** The provider user profile of one connected account — returned by `getUserProfile`. */
+export interface ConnectedAccountProfile {
+  /** The connected account the profile was read from. */
+  connectedAccountId: string;
+  /** The end-user that account belongs to (wire response field `externalUserId`). */
+  externalUserId: string;
+  /** The provider service id (e.g. `gmail`). */
+  service: string;
+  profile: ProviderUserProfile;
+  /** Unix epoch milliseconds when the gateway fetched the profile from the provider. */
+  fetchedAt: number;
+}
+
+/**
  * Provider selector — identify the provider config by `providerConfigId` OR by `service`.
  * The gateway enforces EXACTLY ONE (`invalid_input` otherwise). The `?: never` shape documents
  * that intent and aids autocomplete; it does not reliably reject a both-present object at compile
@@ -226,6 +265,14 @@ export interface ProjectApi {
     requestOrId: string | ConnectionRequest,
     options?: WaitForConnectionOptions,
   ): Promise<ConnectionRequest>;
+  /**
+   * Read who the end-user actually is on the provider — the profile of the third-party account
+   * behind a `connectedAccountId` (a `connect.apiKey` / `connect.customCredential` result, or a
+   * `ConnectionRequest`'s `connectedAccountId` once it reached `connected`, where the field stops
+   * being `null`). Live provider data normalized by the gateway; `fetchedAt` says when it was read.
+   * Use it to show "connected as …" in your UI. Unknown ids reject with `connected_account_not_found`.
+   */
+  getUserProfile(connectedAccountId: string, options?: ProjectCallOptions): Promise<ConnectedAccountProfile>;
   /** Execute an action on behalf of an end-user. Returns the action output directly. */
   execute<A extends ActionId>(
     externalUserId: string,
@@ -257,6 +304,8 @@ export interface ProjectUser {
     requestOrId: string | ConnectionRequest,
     options?: WaitForConnectionOptions,
   ): Promise<ConnectionRequest>;
+  /** See {@link ProjectApi.getUserProfile}. */
+  getUserProfile(connectedAccountId: string, options?: ProjectCallOptions): Promise<ConnectedAccountProfile>;
   /** Execute an action on this user's behalf — see {@link ProjectApi.execute}. */
   execute<A extends ActionId>(actionId: A, input: InputOf<A>, options?: ProjectExecuteOptions): Promise<OutputOf<A>>;
   /** Like {@link ProjectUser.execute}, but returns `{ data, executionId, actionId, message }`. */
@@ -406,6 +455,19 @@ function createProjectApi(deps: ProjectTransport): ProjectApi {
     }
   };
 
+  const getUserProfile = async (
+    connectedAccountId: string,
+    options?: ProjectCallOptions,
+  ): Promise<ConnectedAccountProfile> => {
+    // No wire renaming here: this payload carries `externalUserId` already and has no `alias` field.
+    const envelope = await deps.request(
+      "GET",
+      `/saas/connected-accounts/${encodeURIComponent(connectedAccountId)}/profile`,
+      { options },
+    );
+    return envelope.data as ConnectedAccountProfile;
+  };
+
   const executeRaw = async <A extends ActionId>(
     externalUserId: string,
     actionId: A,
@@ -457,13 +519,14 @@ function createProjectApi(deps: ProjectTransport): ProjectApi {
     },
     getConnectionRequest,
     waitForConnection,
+    getUserProfile,
     execute: <A extends ActionId>(actionId: A, input: InputOf<A>, options?: ProjectExecuteOptions) =>
       execute(externalUserId, actionId, input, options),
     executeRaw: <A extends ActionId>(actionId: A, input: InputOf<A>, options?: ProjectExecuteOptions) =>
       executeRaw(externalUserId, actionId, input, options),
   });
 
-  return { connect, getConnectionRequest, waitForConnection, execute, executeRaw, forUser };
+  return { connect, getConnectionRequest, waitForConnection, getUserProfile, execute, executeRaw, forUser };
 }
 
 declare const __PKG_VERSION__: string;

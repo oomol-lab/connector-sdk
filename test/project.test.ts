@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { ConnectorError, isRetryable } from "../src/index";
-import { ok, projectRecorder } from "./helpers";
+import { fail, ok, projectRecorder } from "./helpers";
 
 const BASE = "https://connector.oomol.com/v1";
 
@@ -42,6 +42,26 @@ function accountPayload(overrides: Record<string, unknown> = {}) {
     accountLabel: "OpenAI (work)",
     createdAt: 1_750_000_000_000,
     updatedAt: 1_750_000_000_000,
+    ...overrides,
+  };
+}
+
+/** A minimal provider-user-profile wire payload (no `alias` — nothing to rename). */
+function profilePayload(overrides: Record<string, unknown> = {}) {
+  return {
+    connectedAccountId: "ca_1",
+    externalUserId: "user_42",
+    service: "github",
+    profile: {
+      id: "1234567",
+      kind: "user",
+      username: "octocat",
+      displayName: "The Octocat",
+      avatarUrl: "https://avatars.githubusercontent.com/u/1234567",
+      email: "octocat@example.com",
+      metadata: { company: "GitHub" },
+    },
+    fetchedAt: 1_750_000_000_000,
     ...overrides,
   };
 }
@@ -131,6 +151,54 @@ describe("ProjectConnector — getConnectionRequest", () => {
     expect(req.status).toBe("connected");
     expect(req.connectionName).toBe("work");
     expect(req.connectedAccountId).toBe("ca_1");
+  });
+});
+
+describe("ProjectConnector — getUserProfile", () => {
+  it("GETs the connected-account profile endpoint with an encoded id and returns the payload as-is", async () => {
+    const { project, calls } = projectRecorder(() => ok(profilePayload()));
+    const result = await project.getUserProfile("ca id/1");
+
+    expect(calls[0]!.method).toBe("GET");
+    expect(calls[0]!.url).toBe(`${BASE}/saas/connected-accounts/ca%20id%2F1/profile`);
+    expect(calls[0]!.body).toBeUndefined();
+    expect(result).toEqual(profilePayload());
+    expect(result.profile.displayName).toBe("The Octocat");
+    expect(result.fetchedAt).toBe(1_750_000_000_000);
+  });
+
+  it("preserves the gateway's nulls for fields a provider doesn't expose", async () => {
+    const { project } = projectRecorder(() =>
+      ok(
+        profilePayload({
+          service: "slack",
+          profile: {
+            id: "U123",
+            kind: "bot",
+            username: null,
+            displayName: null,
+            avatarUrl: null,
+            email: null,
+            metadata: {},
+          },
+        }),
+      ),
+    );
+    const result = await project.getUserProfile("ca_1");
+
+    expect(result.profile.kind).toBe("bot");
+    expect(result.profile.username).toBeNull();
+    expect(result.profile.email).toBeNull();
+    expect(result.profile.metadata).toEqual({});
+  });
+
+  it("surfaces a gateway error for an unknown connected account", async () => {
+    const { project, calls } = projectRecorder(() => fail("connected_account_not_found", 404));
+    await expect(project.getUserProfile("ca_missing")).rejects.toMatchObject({
+      code: "connected_account_not_found",
+      status: 404,
+    });
+    expect(calls).toHaveLength(1); // a 404 is terminal — never retried
   });
 });
 
@@ -266,6 +334,18 @@ describe("ProjectConnector — forUser scoped sub-client", () => {
 
     expect(calls).toHaveLength(2);
     expect(calls.every((c) => c.method === "GET" && c.headers["authorization"] === "Bearer oo_proj_test")).toBe(true);
+  });
+
+  it("exposes getUserProfile on the scoped client, hitting the same connected-account endpoint", async () => {
+    const { project, calls } = projectRecorder(() =>
+      ok(profilePayload({ connectedAccountId: "ca_5", externalUserId: "user_99" })),
+    );
+    const profile = await project.forUser("user_99").getUserProfile("ca_5");
+
+    expect(calls[0]!.method).toBe("GET");
+    expect(calls[0]!.url).toBe(`${BASE}/saas/connected-accounts/ca_5/profile`);
+    expect(profile.externalUserId).toBe("user_99");
+    expect(profile.profile.username).toBe("octocat");
   });
 });
 
