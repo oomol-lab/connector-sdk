@@ -55,7 +55,7 @@ npm install @oomol-lab/connector   # or: bun add / pnpm add / yarn add
 - **Gateway(网关)** — 本客户端所对接的、由 OOMOL Connector 托管的服务。它保管凭证、实际执行对提供方的调用,并返回统一的响应封装。SDK 在本地**不**运行任何集成逻辑;它只负责构造请求、解析回复。
 - **Provider / service(提供方 / 服务)** — 一个第三方 API(`gmail`、`slack`、`github`、`notion`……)。它就是 action id 中的 `<service>` 前缀。
 - **Action** — 提供方上的一个操作,以 `"<service>.<action>"` 标识(例如 `gmail.search_threads`)。你*调用* action,而不*定义*它们——它们存在于网关上。
-- **Connection(连接)** — 某个提供方已存储、已授权的凭证。你从不接触令牌;只需通过 `connectionName` 指定要使用哪个连接。**OAuth 与凭证生命周期是网关的职责,而非 SDK 的。**
+- **Connection(连接)** — 某个提供方已存储、已授权的凭证。你从不接触令牌;只需通过 `connectionName` 指定要使用哪个连接。凭证生命周期由网关掌管:`connect` 可以发起授权,但令牌、刷新与存储始终留在服务端。
 - **Team(团队)** — 可选的租户范围限定。
 
 ## 你能构建什么
@@ -66,6 +66,7 @@ npm install @oomol-lab/connector   # or: bun add / pnpm add / yarn add
 | 访问尚未建模为 action 的端点 | `proxy` | 透传到上游 API,并由网关注入连接的凭证。 |
 | 把 action 喂给 LLM / 构建动态表单 | `catalog` | 任意 action 或提供方的运行时 JSON Schema(2020-12)——`catalog.action` / `catalog.actions` / `catalog.providers`。 |
 | 发现已连接的内容 | `apps.list` | 只读列出你已经关联的连接。 |
+| 连接你自己的账户 | `connect` | `connect.oauth`(异步:授权 URL 加轮询)、`connect.apiKey` / `connect.customCredential`(同步)。需要团队 `creator`/`admin` 密钥。参见[连接你自己的账户](#连接你自己的账户)。 |
 | 让*你的*用户连接*他们自己的*账户 | `ProjectConnector` | 一个独立的、项目范围的客户端,代表你的终端用户连接账户并为其运行 action。参见[为你的用户连接账户](#为你的用户连接账户)。 |
 | 自行运行开源服务端 | `OpenConnector` | 面向你自托管的运行时,提供两种调用路径(`execute` 与 `open.<service>.<action>`)以及 `catalog` / `apps` / `health`。参见[自托管运行时](#自托管运行时)。 |
 
@@ -161,6 +162,42 @@ const { status, data } = await oomol.proxy("github", {
   query: { state: "open" },
 });
 ```
+
+## 连接你自己的账户
+
+关联账户通常在控制台完成,但两个个人客户端也都能在代码里做。三种模式,两种结果形态:
+
+```ts
+// OAuth — ASYNCHRONOUS. Send the user to the URL, then poll.
+const started = await oomol.connect.oauth("gmail", { returnUri: "https://app.example.com/done" });
+console.log(started.authorizationUrl);
+
+const settled = await oomol.connect.waitForConnection(started);
+if (settled.status === "connected") console.log("connection id:", settled.appId);
+
+// API key / custom credential — SYNCHRONOUS. The credential is validated and stored in one call.
+const openai = await oomol.connect.apiKey("openai", { apiKey: process.env.OPENAI_API_KEY! });
+const jira = await oomol.connect.customCredential("jira", {
+  values: { site: "acme.atlassian.net", email: "me@acme.com", token: process.env.JIRA_TOKEN! },
+});
+```
+
+`waitForConnection` 对所有终态都会**正常返回**:`connected`、`failed`(用户拒绝授权,或被更新的一次尝试顶替)以及 `expired`(用户始终没有完成)。只有你自己设定的 `maxWaitMs` 耗尽时它才抛错,错误码为 `client_wait_timeout`。若你想自己控制轮询节奏,或在进程重启后恢复,请改用 `getAttempt(connectionRequestId)`。
+
+| 方法 | 返回 | 说明 |
+| --- | --- | --- |
+| `connect.oauth(service, input?)` | `{ authorizationUrl, stateHandle, connectionRequestId, status, expiresAt }` | `input` 的 `returnUri`、`authorizationOptionIds`、`extra`、`secretExtra` 全部可选。轮询用 `connectionRequestId`,**不是** `stateHandle`。 |
+| `connect.apiKey(service, { apiKey, extra?, comment? })` | 已就绪的连接 | `apiKey` 是**上游提供方**的密钥,绝不是你的 OOMOL 密钥。 |
+| `connect.customCredential(service, { values, comment? })` | 已就绪的连接 | `values` 的键来自提供方声明的凭证字段。 |
+| `connect.getAttempt(id)` | 一次 OAuth 尝试 | 在 `expiresAt` 之后 24 小时内仍可读取;未知 id 会以 `connection_request_not_found` 拒绝。 |
+| `connect.waitForConnection(startOrId, opts?)` | 已落定的尝试 | `pollIntervalMs`(2 秒)、`maxWaitMs`(10 分钟,即授权窗口)。 |
+
+> [!IMPORTANT]
+> **这些是管理操作,权限门槛高于运行 action。** 在托管网关上,密钥所属用户必须是所在团队的 `creator` 或 `admin`;普通成员会被策略层以 403 拒绝,请求根本到不了后端。在自托管运行时上,它们需要运行时的 **admin** 令牌,运行时令牌(`oct_…`)会被拒绝。参见[自托管运行时](#自托管运行时)。
+
+这个调用面有意不做两件事:**命名**连接(两个后端都自行分配名称,之后在控制台重命名)以及**删除**或重新授权连接。
+
+完整可运行的示例导览见 [`examples/connect.ts`](../../examples/connect.ts)。
 
 ## 为你的用户连接账户
 
@@ -267,8 +304,22 @@ const open = new OpenConnector({
 });
 ```
 
+`connect` 在这里同样可用,形态与托管客户端完全一致,但运行时上的连接管理属于 **admin 作用域**,因此需要第二个令牌:
+
+```ts
+const open = new OpenConnector({
+  runtimeToken: process.env.OOMOL_CONNECT_RUNTIME_TOKEN, // runs actions, reads the catalog
+  adminToken: process.env.OOMOL_CONNECT_ADMIN_TOKEN, // required by `connect.*` only
+});
+
+const started = await open.connect.oauth("gmail", { returnUri: "http://localhost:5173/done" });
+await open.connect.waitForConnection(started);
+```
+
+运行时会拒绝这些路由上的运行时令牌,所以 SDK 从不往那里发送它:`connect.*` 携带 `adminToken`,其余调用携带 `runtimeToken`。不配置 `adminToken` 时,`connect.*` 会以无认证方式发出,这正好对应没有配置 admin 令牌的运行时。
+
 > [!NOTE]
-> 连接、凭证与 OAuth 配置都在运行时的 **Web 控制台**中管理——那属于服务端管理,有意排除在本 SDK 之外。客户端消费控制台所配置的内容;连接选择有两层(按调用的 `connectionName` 覆盖客户端级默认值——没有 `using()` 作用域,也没有 `team`)。而且与托管客户端一样,当某个 service id 与成员名(`execute` / `executeRaw` / `health` / `proxy` / `catalog` / `apps`)冲突时,仍可通过 `execute("<service>.<action>", …)` 正常工作——只是它的命名空间语法糖会被遮蔽。
+> 连接管理的其余部分,包括删除连接、OAuth 客户端配置、签发令牌,仍在运行时的 **Web 控制台**中完成,有意排除在本 SDK 之外。连接选择有两层(按调用的 `connectionName` 覆盖客户端级默认值,没有 `using()` 作用域,也没有 `team`)。而且与托管客户端一样,当某个 service id 与成员名(`execute` / `executeRaw` / `health` / `proxy` / `catalog` / `apps` / `connect`)冲突时,仍可通过 `execute("<service>.<action>", …)` 正常工作,只是它的命名空间语法糖会被遮蔽。
 
 完整可运行的示例导览见 [`examples/open.ts`](../../examples/open.ts)。
 
@@ -284,9 +335,10 @@ const open = new OpenConnector({
 - **`oomol.proxy(service, { endpoint, method, query, headers, body })`** — 透传到上游提供方 API(当尚无 action 建模该端点时使用)。
 - **`oomol.catalog.action / .actions / .providers`** — 用于动态 UI、校验或 LLM 工具的运行时 JSON Schema。
 - **`oomol.apps.list()`** — 对你已连接应用的只读检视。
+- **`oomol.connect.oauth / .apiKey / .customCredential`** — 连接你自己的账户,并用 `getAttempt` / `waitForConnection` 跟进一次 OAuth 尝试直到完成。属于管理作用域:托管端需要团队 `creator`/`admin` 密钥,自托管端需要 admin 令牌。参见[连接你自己的账户](#连接你自己的账户)。
 - **`oomol.executeRaw(...)`** — 与 `execute` 类似,但返回 `{ data, executionId, actionId, message }`。
 - **`ProjectConnector`** — 一个独立的客户端(项目 API 密钥),用于构建 SaaS 平台:`connect.oauth` / `connect.apiKey` / `connect.customCredential`、`waitForConnection`、用于读取用户在第三方平台身份的 `getUserProfile`、代表用户的 `execute` / `executeRaw`,以及用于限定到单个用户的 `forUser`。参见[为你的用户连接账户](#为你的用户连接账户)。
-- **`OpenConnector`** — 面向开源自托管运行时的个人客户端:两种调用路径(`execute` 与 `open.<service>.<action>`)、`catalog` / `apps`(外加 `health`、`catalog.search` / `.services`、`apps.listByService` / `.authenticated`),由一个可选的运行时令牌进行认证。参见[自托管运行时](#自托管运行时)。
+- **`OpenConnector`** — 面向开源自托管运行时的个人客户端:两种调用路径(`execute` 与 `open.<service>.<action>`)、`catalog` / `apps`(外加 `health`、`catalog.search` / `.services`、`apps.listByService` / `.authenticated`)以及 `connect`,由一个可选的运行时令牌进行认证(`connect` 另需 admin 令牌)。参见[自托管运行时](#自托管运行时)。
 
 每个方法的可运行、经过类型检查的用法见 [`examples/`](../../examples)。
 

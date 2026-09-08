@@ -55,7 +55,7 @@ No architecture to learn — just five words, because all the heavy lifting happ
 - **Gateway** — the hosted OOMOL Connector service this client talks to. It holds credentials, performs the actual provider calls, and returns a uniform envelope. The SDK runs **no** integration logic locally; it only builds the request and parses the reply.
 - **Provider / service** — a third-party API (`gmail`, `slack`, `github`, `notion`, …). It's the `<service>` prefix of an action id.
 - **Action** — one operation on a provider, identified as `"<service>.<action>"` (e.g. `gmail.search_threads`). You *call* actions; you don't define them — they live on the gateway.
-- **Connection** — a stored, already-authorized credential for a provider. You never touch tokens; you just name which connection to use via `connectionName`. **OAuth and credential lifecycle are the gateway's job, not the SDK's.**
+- **Connection** — a stored, already-authorized credential for a provider. You never touch tokens; you just name which connection to use via `connectionName`. The gateway owns the credential lifecycle — `connect` starts an authorization, but the tokens, refresh, and storage stay server-side.
 - **Team** — optional tenant scoping.
 
 ## What you can build
@@ -66,6 +66,7 @@ No architecture to learn — just five words, because all the heavy lifting happ
 | Hit an endpoint not yet modeled as an action | `proxy` | Passthrough to the upstream API, with the connection's credentials injected by the gateway. |
 | Feed actions to an LLM / build dynamic forms | `catalog` | Runtime JSON Schema (2020-12) for any action or provider — `catalog.action` / `catalog.actions` / `catalog.providers`. |
 | Discover what's connected | `apps.list` | Read-only list of the connections you've already linked. |
+| Connect an account of your own | `connect` | `connect.oauth` (async — authorization URL + poll), `connect.apiKey` / `connect.customCredential` (sync). Needs a team `creator`/`admin` key. See [Connect your own account](#connect-your-own-account). |
 | Let *your* users connect *their* accounts | `ProjectConnector` | A separate project-scoped client to connect accounts on behalf of your end-users and run actions for them. See [Connect accounts for your users](#connect-accounts-for-your-users). |
 | Run the open-source server yourself | `OpenConnector` | Both call paths (`execute` and `open.<service>.<action>`) + `catalog` / `apps` / `health` against your self-hosted runtime. See [Self-hosted runtime](#self-hosted-runtime). |
 
@@ -161,6 +162,42 @@ const { status, data } = await oomol.proxy("github", {
   query: { state: "open" },
 });
 ```
+
+## Connect your own account
+
+Linking an account is normally a console job, but both personal clients can also do it in code. Three modes, two shapes of result:
+
+```ts
+// OAuth — ASYNCHRONOUS. Send the user to the URL, then poll.
+const started = await oomol.connect.oauth("gmail", { returnUri: "https://app.example.com/done" });
+console.log(started.authorizationUrl);
+
+const settled = await oomol.connect.waitForConnection(started);
+if (settled.status === "connected") console.log("connection id:", settled.appId);
+
+// API key / custom credential — SYNCHRONOUS. The credential is validated and stored in one call.
+const openai = await oomol.connect.apiKey("openai", { apiKey: process.env.OPENAI_API_KEY! });
+const jira = await oomol.connect.customCredential("jira", {
+  values: { site: "acme.atlassian.net", email: "me@acme.com", token: process.env.JIRA_TOKEN! },
+});
+```
+
+`waitForConnection` **resolves** on every terminal status — `connected`, `failed` (the user declined, or a newer attempt superseded this one), and `expired` (they never finished). It throws only when your own `maxWaitMs` runs out, with code `client_wait_timeout`. Prefer `getAttempt(connectionRequestId)` when you drive your own polling, or resume after a restart.
+
+| Method | Returns | Notes |
+| --- | --- | --- |
+| `connect.oauth(service, input?)` | `{ authorizationUrl, stateHandle, connectionRequestId, status, expiresAt }` | `input`: `returnUri`, `authorizationOptionIds`, `extra`, `secretExtra` — all optional. Poll with `connectionRequestId`, **not** `stateHandle`. |
+| `connect.apiKey(service, { apiKey, extra?, comment? })` | the ready connection | `apiKey` is the **upstream provider's** key, never your OOMOL key. |
+| `connect.customCredential(service, { values, comment? })` | the ready connection | `values` is keyed by the provider's declared credential fields. |
+| `connect.getAttempt(id)` | one OAuth attempt | Readable until 24h past `expiresAt`; unknown ids reject with `connection_request_not_found`. |
+| `connect.waitForConnection(startOrId, opts?)` | the settled attempt | `pollIntervalMs` (2s), `maxWaitMs` (10min, the authorization window). |
+
+> [!IMPORTANT]
+> **These are management calls, and the permission bar is higher than for running actions.** On the hosted gateway the key's user must be `creator` or `admin` of the effective team; a plain member is refused by the policy layer with a 403 before the request lands. On the self-hosted runtime they need the runtime's **admin** token — a runtime token (`oct_…`) is rejected. See [Self-hosted runtime](#self-hosted-runtime).
+
+Two things this surface deliberately does not do: **name** the connection (both backends assign the name themselves; rename it in the console afterwards) and **delete** or re-authorize one.
+
+Full runnable tour — [`examples/connect.ts`](./examples/connect.ts).
 
 ## Connect accounts for your users
 
@@ -267,8 +304,22 @@ const open = new OpenConnector({
 });
 ```
 
+`connect` works here too, with the same shape as on the hosted client — but connection management is **admin-scoped** on the runtime, so it takes a second token:
+
+```ts
+const open = new OpenConnector({
+  runtimeToken: process.env.OOMOL_CONNECT_RUNTIME_TOKEN, // runs actions, reads the catalog
+  adminToken: process.env.OOMOL_CONNECT_ADMIN_TOKEN, // required by `connect.*` only
+});
+
+const started = await open.connect.oauth("gmail", { returnUri: "http://localhost:5173/done" });
+await open.connect.waitForConnection(started);
+```
+
+The runtime rejects a runtime token on these routes, so the SDK never sends one there: `connect.*` carries `adminToken`, everything else carries `runtimeToken`. Omit `adminToken` and `connect.*` goes out unauthenticated — which is exactly right for a runtime that has no admin token configured.
+
 > [!NOTE]
-> Connections, credentials, and OAuth setup are managed in the runtime's **web console** — that's server administration, deliberately outside this SDK. The client consumes what the console configured; connection selection has two layers (per-call `connectionName` over the client-level default — there is no `using()` scope and no `team`). And as on the hosted client, a service id that collides with a member name (`execute` / `executeRaw` / `health` / `proxy` / `catalog` / `apps`) keeps working through `execute("<service>.<action>", …)` — only its namespace sugar is shadowed.
+> The rest of connection administration — deleting connections, OAuth client setup, minting tokens — stays in the runtime's **web console**, deliberately outside this SDK. Connection selection has two layers (per-call `connectionName` over the client-level default — there is no `using()` scope and no `team`). And as on the hosted client, a service id that collides with a member name (`execute` / `executeRaw` / `health` / `proxy` / `catalog` / `apps` / `connect`) keeps working through `execute("<service>.<action>", …)` — only its namespace sugar is shadowed.
 
 Full runnable tour — [`examples/open.ts`](./examples/open.ts).
 
@@ -284,9 +335,10 @@ Full runnable tour — [`examples/open.ts`](./examples/open.ts).
 - **`oomol.proxy(service, { endpoint, method, query, headers, body })`** — passthrough to an upstream provider API (use it when no action models the endpoint yet).
 - **`oomol.catalog.action / .actions / .providers`** — runtime JSON Schema for dynamic UIs, validation, or LLM tools.
 - **`oomol.apps.list()`** — read-only introspection of your connected apps.
+- **`oomol.connect.oauth / .apiKey / .customCredential`** — link an account of your own, plus `getAttempt` / `waitForConnection` to follow an OAuth attempt to completion. Management-scoped: needs a team `creator`/`admin` key (hosted) or the admin token (self-hosted). See [Connect your own account](#connect-your-own-account).
 - **`oomol.executeRaw(...)`** — like `execute`, but returns `{ data, executionId, actionId, message }`.
 - **`ProjectConnector`** — a separate client (project API key) to build a SaaS platform: `connect.oauth` / `connect.apiKey` / `connect.customCredential`, `waitForConnection`, `getUserProfile` to read who the user is on the provider, `execute` / `executeRaw` on a user's behalf, and `forUser` to scope to one user. See [Connect accounts for your users](#connect-accounts-for-your-users).
-- **`OpenConnector`** — the personal client for the open-source self-hosted runtime: both call paths (`execute` and `open.<service>.<action>`), `catalog` / `apps` (+ `health`, `catalog.search` / `.services`, `apps.listByService` / `.authenticated`), authenticated by an optional runtime token. See [Self-hosted runtime](#self-hosted-runtime).
+- **`OpenConnector`** — the personal client for the open-source self-hosted runtime: both call paths (`execute` and `open.<service>.<action>`), `catalog` / `apps` (+ `health`, `catalog.search` / `.services`, `apps.listByService` / `.authenticated`), and `connect`, authenticated by an optional runtime token (plus an admin token for `connect`). See [Self-hosted runtime](#self-hosted-runtime).
 
 See [`examples/`](./examples) for runnable, type-checked usage of every method.
 

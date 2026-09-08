@@ -25,6 +25,19 @@ export type {
   OutputOf,
 } from "./registry";
 
+// The `connect` namespace shared by both personal clients (hosted `Connector`, self-hosted
+// `OpenConnector`) — create a connection on your OWN account.
+export type {
+  ConnectApi,
+  ConnectionAttempt,
+  ConnectionAttemptStart,
+  ConnectionAttemptStatus,
+  ConnectOAuthInput,
+  ConnectApiKeyInput,
+  ConnectCustomCredentialInput,
+  ConnectionWaitTuning,
+} from "./connect";
+
 export type {
   ClientConfig,
   CallOptions,

@@ -55,7 +55,7 @@ Node ≥ 18 が必要です（組み込みの `fetch` / `AbortController`）。�
 - **Gateway（ゲートウェイ）** — このクライアントが通信する、ホスト型の OOMOL Connector サービス。認証情報を保持し、実際のプロバイダー呼び出しを行い、統一されたエンベロープを返します。SDK はローカルで統合ロジックを**一切**実行せず、リクエストの構築とレスポンスの解析だけを行います。
 - **Provider / service（プロバイダー / サービス）** — サードパーティ API（`gmail`、`slack`、`github`、`notion`、…）。アクション id の `<service>` プレフィックスにあたります。
 - **Action（アクション）** — プロバイダー上の1つの操作で、`"<service>.<action>"`（例: `gmail.search_threads`）として識別されます。アクションは*呼び出す*ものであり、定義するものではありません — アクションはゲートウェイ上に存在します。
-- **Connection（コネクション）** — プロバイダー向けに保存済みの、認可済み認証情報。トークンに触れることは一切なく、`connectionName` でどのコネクションを使うか指定するだけです。**OAuth と認証情報のライフサイクルはゲートウェイの役割であり、SDK の役割ではありません。**
+- **Connection（コネクション）** — プロバイダー向けに保存済みの、認可済み認証情報。トークンに触れることは一切なく、`connectionName` でどのコネクションを使うか指定するだけです。認証情報のライフサイクルはゲートウェイが所有します。`connect` で認可を開始できますが、トークン・更新・保存はサーバー側に留まります。
 - **Team（チーム）** — 任意のテナントスコープ指定。
 
 ## 作れるもの
@@ -66,6 +66,7 @@ Node ≥ 18 が必要です（組み込みの `fetch` / `AbortController`）。�
 | まだアクションとしてモデル化されていないエンドポイントを叩く | `proxy` | 上流 API へのパススルー。コネクションの認証情報はゲートウェイが注入します。 |
 | アクションを LLM に渡す / 動的フォームを構築する | `catalog` | 任意のアクションやプロバイダーのランタイム JSON Schema（2020-12） — `catalog.action` / `catalog.actions` / `catalog.providers`。 |
 | 何が接続済みかを調べる | `apps.list` | すでにリンク済みのコネクションの読み取り専用リスト。 |
+| 自分のアカウントを接続する | `connect` | `connect.oauth`（非同期: 認可 URL とポーリング）、`connect.apiKey` / `connect.customCredential`（同期）。チームの `creator`/`admin` キーが必要です。[自分のアカウントを接続する](#自分のアカウントを接続する)を参照。 |
 | *あなたの*ユーザーに*自分の*アカウントを接続させる | `ProjectConnector` | エンドユーザーの代わりにアカウントを接続し、彼らのためにアクションを実行する、プロジェクトスコープの別クライアント。[ユーザーのアカウントを接続する](#ユーザーのアカウントを接続する)を参照。 |
 | オープンソースのサーバーを自分で運用する | `OpenConnector` | セルフホストのランタイムに対する両方の呼び出しパス（`execute` と `open.<service>.<action>`）＋ `catalog` / `apps` / `health`。[セルフホストランタイム](#セルフホストランタイム)を参照。 |
 
@@ -161,6 +162,42 @@ const { status, data } = await oomol.proxy("github", {
   query: { state: "open" },
 });
 ```
+
+## 自分のアカウントを接続する
+
+アカウントのリンクは通常コンソールの仕事ですが、2 つの個人用クライアントはコードからも実行できます。3 つのモード、2 種類の結果:
+
+```ts
+// OAuth — ASYNCHRONOUS. Send the user to the URL, then poll.
+const started = await oomol.connect.oauth("gmail", { returnUri: "https://app.example.com/done" });
+console.log(started.authorizationUrl);
+
+const settled = await oomol.connect.waitForConnection(started);
+if (settled.status === "connected") console.log("connection id:", settled.appId);
+
+// API key / custom credential — SYNCHRONOUS. The credential is validated and stored in one call.
+const openai = await oomol.connect.apiKey("openai", { apiKey: process.env.OPENAI_API_KEY! });
+const jira = await oomol.connect.customCredential("jira", {
+  values: { site: "acme.atlassian.net", email: "me@acme.com", token: process.env.JIRA_TOKEN! },
+});
+```
+
+`waitForConnection` はすべての終了状態で**正常に解決します**。`connected`、`failed`（ユーザーが拒否した、またはより新しい試行に置き換えられた）、`expired`（ユーザーが最後まで進めなかった）のいずれもです。例外を投げるのは、あなた自身が指定した `maxWaitMs` を使い切ったときだけで、エラーコードは `client_wait_timeout` です。ポーリングを自分で制御したい場合や、プロセス再起動後に再開したい場合は `getAttempt(connectionRequestId)` を使ってください。
+
+| メソッド | 戻り値 | 備考 |
+| --- | --- | --- |
+| `connect.oauth(service, input?)` | `{ authorizationUrl, stateHandle, connectionRequestId, status, expiresAt }` | `input` の `returnUri`、`authorizationOptionIds`、`extra`、`secretExtra` はすべて任意。ポーリングには `connectionRequestId` を使い、**`stateHandle` は使いません**。 |
+| `connect.apiKey(service, { apiKey, extra?, comment? })` | 準備済みのコネクション | `apiKey` は**上流プロバイダー**のキーであり、あなたの OOMOL キーではありません。 |
+| `connect.customCredential(service, { values, comment? })` | 準備済みのコネクション | `values` のキーはプロバイダーが宣言した認証情報フィールドです。 |
+| `connect.getAttempt(id)` | 1 件の OAuth 試行 | `expiresAt` の 24 時間後まで読み取れます。未知の id は `connection_request_not_found` で拒否されます。 |
+| `connect.waitForConnection(startOrId, opts?)` | 確定した試行 | `pollIntervalMs`（2 秒）、`maxWaitMs`（10 分、認可ウィンドウと同じ）。 |
+
+> [!IMPORTANT]
+> **これらは管理操作であり、アクション実行よりも権限のハードルが高くなります。** ホスト型ゲートウェイでは、キーの所有ユーザーが対象チームの `creator` または `admin` である必要があります。一般メンバーはポリシー層で 403 として拒否され、リクエストはバックエンドに届きません。セルフホストランタイムでは、ランタイムの **admin** トークンが必要で、ランタイムトークン（`oct_…`）は拒否されます。[セルフホストランタイム](#セルフホストランタイム)を参照。
+
+この API があえて行わないことが 2 つあります。コネクションの**命名**（どちらのバックエンドも自分で名前を割り当てます。あとからコンソールで変更してください）と、**削除**や再認可です。
+
+実行可能な完全なツアーは [`examples/connect.ts`](../../examples/connect.ts) を参照。
 
 ## ユーザーのアカウントを接続する
 
@@ -267,8 +304,22 @@ const open = new OpenConnector({
 });
 ```
 
+`connect` はここでも使えます。形はホスト型クライアントと同じですが、ランタイム上のコネクション管理は **admin スコープ**なので、2 つ目のトークンが必要です:
+
+```ts
+const open = new OpenConnector({
+  runtimeToken: process.env.OOMOL_CONNECT_RUNTIME_TOKEN, // runs actions, reads the catalog
+  adminToken: process.env.OOMOL_CONNECT_ADMIN_TOKEN, // required by `connect.*` only
+});
+
+const started = await open.connect.oauth("gmail", { returnUri: "http://localhost:5173/done" });
+await open.connect.waitForConnection(started);
+```
+
+ランタイムはこれらのルートでランタイムトークンを拒否するため、SDK はそこへ送りません。`connect.*` は `adminToken` を、それ以外の呼び出しは `runtimeToken` を運びます。`adminToken` を省略すると `connect.*` は認証なしで送信されます。これは admin トークンを設定していないランタイムにとって正しい挙動です。
+
 > [!NOTE]
-> コネクション、認証情報、OAuth のセットアップは、ランタイムの **Web コンソール**で管理されます — これはサーバー管理であり、意図的にこの SDK の外に置かれています。クライアントはコンソールで設定された内容を利用します。コネクションの選択には2つの層があります（呼び出しごとの `connectionName` がクライアントレベルのデフォルトを上書きします — `using()` スコープも `team` もありません）。そしてホスト型クライアントと同様に、メンバー名（`execute` / `executeRaw` / `health` / `proxy` / `catalog` / `apps`）と衝突するサービス id は、`execute("<service>.<action>", …)` を通じて動作し続けます — シャドウされるのはその名前空間シュガーだけです。
+> コネクション管理の残りの部分、つまりコネクションの削除、OAuth クライアントの設定、トークンの発行は、ランタイムの **Web コンソール**に留まり、意図的にこの SDK の外に置かれています。コネクションの選択には 2 つの層があります（呼び出しごとの `connectionName` がクライアントレベルのデフォルトを上書きします。`using()` スコープも `team` もありません）。そしてホスト型クライアントと同様に、メンバー名（`execute` / `executeRaw` / `health` / `proxy` / `catalog` / `apps` / `connect`）と衝突するサービス id は、`execute("<service>.<action>", …)` を通じて動作し続けます。シャドウされるのはその名前空間シュガーだけです。
 
 完全に実行可能なツアーは [`examples/open.ts`](../../examples/open.ts) を参照。
 
@@ -284,9 +335,10 @@ const open = new OpenConnector({
 - **`oomol.proxy(service, { endpoint, method, query, headers, body })`** — 上流プロバイダー API へのパススルー（まだアクションがそのエンドポイントをモデル化していない場合に使用）。
 - **`oomol.catalog.action / .actions / .providers`** — 動的 UI、バリデーション、または LLM ツール向けのランタイム JSON Schema。
 - **`oomol.apps.list()`** — 接続済みアプリの読み取り専用イントロスペクション。
+- **`oomol.connect.oauth / .apiKey / .customCredential`** — 自分のアカウントを接続し、`getAttempt` / `waitForConnection` で OAuth の試行を完了まで追跡します。管理スコープです: ホスト型ではチームの `creator`/`admin` キー、セルフホストでは admin トークンが必要です。[自分のアカウントを接続する](#自分のアカウントを接続する)を参照。
 - **`oomol.executeRaw(...)`** — `execute` と同様ですが、`{ data, executionId, actionId, message }` を返します。
 - **`ProjectConnector`** — SaaS プラットフォームを構築するための別クライアント（プロジェクト API キー）: `connect.oauth` / `connect.apiKey` / `connect.customCredential`、`waitForConnection`、プロバイダー側のユーザー情報を読む `getUserProfile`、ユーザーの代わりに実行する `execute` / `executeRaw`、そして1人のユーザーにスコープする `forUser`。[ユーザーのアカウントを接続する](#ユーザーのアカウントを接続する)を参照。
-- **`OpenConnector`** — オープンソースのセルフホストランタイム向けの個人用クライアント: 両方の呼び出しパス（`execute` と `open.<service>.<action>`）、`catalog` / `apps`（＋ `health`、`catalog.search` / `.services`、`apps.listByService` / `.authenticated`）、任意のランタイムトークンで認証されます。[セルフホストランタイム](#セルフホストランタイム)を参照。
+- **`OpenConnector`** — オープンソースのセルフホストランタイム向けの個人用クライアント: 両方の呼び出しパス（`execute` と `open.<service>.<action>`）、`catalog` / `apps`（＋ `health`、`catalog.search` / `.services`、`apps.listByService` / `.authenticated`）、そして `connect`。任意のランタイムトークンで認証されます（`connect` には別途 admin トークンが必要）。[セルフホストランタイム](#セルフホストランタイム)を参照。
 
 すべてのメソッドの実行可能で型チェック済みの使用例は [`examples/`](../../examples) を参照してください。
 

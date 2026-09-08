@@ -188,3 +188,69 @@ describe("transport — header injection guard", () => {
     expect(calls).toHaveLength(0);
   });
 });
+
+describe("flat gateway error bodies", () => {
+  it("maps the hosted gateway's `{ errorCode, errorMessage }` onto the typed error", async () => {
+    // Routes that throw (catalog, apps, connect) answer with this flat shape rather than the
+    // `{ success: false, … }` envelope; the code must survive rather than degrade to provider_error.
+    const { oomol } = recorder(
+      () =>
+        new Response(JSON.stringify({ errorCode: "user_oauth_client_required", errorMessage: "Configure an OAuth client first." }), {
+          status: 409,
+          headers: { "content-type": "application/json" },
+        }),
+      {},
+    );
+    await expect(oomol.apps.list()).rejects.toMatchObject({
+      name: "ConnectorError",
+      code: "user_oauth_client_required",
+      message: "Configure an OAuth client first.",
+      status: 409,
+    });
+  });
+
+  it("carries the flat body's executionId and data through", async () => {
+    const { oomol } = recorder(
+      () =>
+        new Response(
+          JSON.stringify({ errorCode: "provider_error", errorMessage: "upstream said no", executionId: "exec_7", data: { upstream: 502 } }),
+          { status: 502, headers: { "content-type": "application/json" } },
+        ),
+      {},
+      { sleep: async () => {} },
+    );
+    await expect(oomol.execute("gmail.search_threads", { query: "x" }, { retries: 0 })).rejects.toMatchObject({
+      code: "provider_error",
+      executionId: "exec_7",
+      data: { upstream: 502 },
+    });
+  });
+
+  it("falls back to the status line when the flat body carries no errorMessage", async () => {
+    const { oomol } = recorder(
+      () => new Response(JSON.stringify({ errorCode: "app_not_found" }), { status: 404, headers: { "content-type": "application/json" } }),
+      {},
+    );
+    await expect(oomol.apps.list()).rejects.toMatchObject({
+      code: "app_not_found",
+      status: 404,
+      message: "Request failed with status 404 (app_not_found)",
+    });
+  });
+
+  it("ignores a non-object JSON error body (a bare string or number)", async () => {
+    const { oomol } = recorder(
+      () => new Response(JSON.stringify("just a string"), { status: 400, headers: { "content-type": "application/json" } }),
+      {},
+    );
+    await expect(oomol.apps.list()).rejects.toMatchObject({ code: "provider_error", status: 400, data: "just a string" });
+  });
+
+  it("ignores a flat-looking body whose errorCode is not a string", async () => {
+    const { oomol } = recorder(
+      () => new Response(JSON.stringify({ errorCode: 42, errorMessage: "nope" }), { status: 400, headers: { "content-type": "application/json" } }),
+      {},
+    );
+    await expect(oomol.apps.list()).rejects.toMatchObject({ code: "provider_error", status: 400 });
+  });
+});

@@ -20,6 +20,7 @@
  * surface speaks `connectionName` everywhere, matching the core `Connector`.
  */
 
+import { createConnectApi, type ConnectApi } from "./connect";
 import { ConnectorError } from "./errors";
 import {
   assertHeadersSafe,
@@ -167,6 +168,13 @@ export interface OpenConnectorApi {
   readonly catalog: OpenCatalogApi;
   /** Connected-app introspection (read-only). */
   readonly apps: OpenAppsApi;
+  /**
+   * Create a connection on this runtime: `oauth` (asynchronous — returns an authorization URL to
+   * poll), `apiKey` / `customCredential` (synchronous). These routes are ADMIN-scoped: they need
+   * the runtime's admin token ({@link OpenConnectorConfig.adminToken}), NOT the runtime token —
+   * an `oct_…` token is rejected with `unauthorized`.
+   */
+  readonly connect: ConnectApi<OpenCallOptions>;
 }
 
 /**
@@ -174,7 +182,7 @@ export interface OpenConnectorApi {
  * collides with one of these is still fully callable via `execute` — only its path-2 sugar is
  * shadowed (the same caveat the core `Connector` carries for its reserved names).
  */
-const RESERVED = new Set<string>(["execute", "executeRaw", "health", "proxy", "catalog", "apps"]);
+const RESERVED = new Set<string>(["execute", "executeRaw", "health", "proxy", "catalog", "apps", "connect"]);
 
 /**
  * Build the second-layer Proxy for a service. Each property access returns a caller that
@@ -225,10 +233,16 @@ interface OpenTransport {
       actionId?: string;
       /** Connection selector for execute calls (wire header `x-oo-connector-alias`). */
       connectionName?: string;
+      /** Authenticate with the ADMIN token instead of the runtime token (connection management). */
+      admin?: boolean;
     },
   ): Promise<Envelope>;
   /** Client-level default connection name (from config), if any. */
   defaultConnectionName?: string;
+  /** Sleep between `waitForConnection` polls; injectable so tests never really wait. */
+  sleep(ms: number, signal?: AbortSignal): Promise<void>;
+  /** The client's resolved default per-request timeout (ms); used to clamp each poll. */
+  defaultTimeoutMs: number;
 }
 
 /** Rename the wire `alias` to `connectionName`; preserve every other runtime field. */
@@ -336,10 +350,28 @@ function createOpenApi(deps: OpenTransport): OpenConnectorApi {
     },
   };
 
+  // Connection management lives on the same `/v1` prefix as the runtime surface but is gated by the
+  // ADMIN token, so every request here is flagged `admin: true` for the spec builder.
+  const connect = createConnectApi<OpenCallOptions>({
+    prefix: "/v1",
+    request: (method, path, init) =>
+      deps.request(method, path, { body: init.body, options: init.options, admin: true }),
+    sleep: (ms, signal) => deps.sleep(ms, signal),
+    defaultTimeoutMs: deps.defaultTimeoutMs,
+  });
+
   // The sub-panels are frozen here; the constructor freezes the top level (after installing the
   // class prototype) so a stray assignment (`open.catalog = …`) throws instead of silently
   // replacing an API panel — matching how the hosted client's getter-only accessors reject it.
-  return { execute, executeRaw, health, proxy, catalog: Object.freeze(catalog), apps: Object.freeze(apps) };
+  return {
+    execute,
+    executeRaw,
+    health,
+    proxy,
+    catalog: Object.freeze(catalog),
+    apps: Object.freeze(apps),
+    connect: Object.freeze(connect),
+  };
 }
 
 declare const __PKG_VERSION__: string;
@@ -360,6 +392,13 @@ export interface OpenConnectorConfig {
    * `Authorization: Bearer <runtimeToken>`. Optional: a runtime with no tokens answers openly.
    */
   runtimeToken?: string;
+  /**
+   * The runtime's ADMIN token (`OOMOL_CONNECT_ADMIN_TOKEN`), used ONLY by the `connect` namespace —
+   * connection management is admin-scoped, and the runtime rejects a runtime token there. Optional:
+   * a runtime with no admin token configured accepts management calls unauthenticated (and one that
+   * has runtime tokens but no admin token refuses them outright, by its own design).
+   */
+  adminToken?: string;
   /** Client-level default connection name, applied to `execute` calls (per-call option wins). */
   connectionName?: string;
   /** Per-request timeout in ms. Default 30_000. */
@@ -373,6 +412,7 @@ export interface OpenConnectorConfig {
 interface ResolvedOpenConfig {
   baseUrl: string;
   runtimeToken?: string;
+  adminToken?: string;
   connectionName?: string;
   timeoutMs: number;
   maxRetries: number;
@@ -389,6 +429,7 @@ function buildOpenSpec(
     options?: OpenCallOptions;
     actionId?: string;
     connectionName?: string;
+    admin?: boolean;
   },
 ): RequestSpec {
   const url = new URL(cfg.baseUrl + path);
@@ -404,7 +445,10 @@ function buildOpenSpec(
   };
   // A tokenless request is a first-class mode (fresh instance, auth not enabled) — the server is
   // the authority on whether that suffices, so no header is sent rather than an empty one.
-  if (cfg.runtimeToken !== undefined) headers["authorization"] = `Bearer ${cfg.runtimeToken}`;
+  // Connection management is admin-scoped: it carries the admin token, never the runtime token
+  // (which the runtime rejects there), and nothing at all when no admin token was configured.
+  const token = init.admin ? cfg.adminToken : cfg.runtimeToken;
+  if (token !== undefined) headers["authorization"] = `Bearer ${token}`;
   if (init.body !== undefined) headers["content-type"] = "application/json";
   // Connection name selector — carried as the client header the runtime reads (wire key stays `alias`).
   if (init.connectionName !== undefined) headers["x-oo-connector-alias"] = init.connectionName;
@@ -438,9 +482,16 @@ class OpenConnectorImpl {
         status: 0,
       });
     }
+    if (config.adminToken !== undefined && (typeof config.adminToken !== "string" || config.adminToken.length === 0)) {
+      throw new ConnectorError("`adminToken` must be a non-empty string when provided", {
+        code: "client_invalid_request",
+        status: 0,
+      });
+    }
     const cfg: ResolvedOpenConfig = {
       baseUrl: (config.baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, ""),
       runtimeToken: config.runtimeToken,
+      adminToken: config.adminToken,
       connectionName: config.connectionName,
       timeoutMs: config.timeoutMs ?? DEFAULT_TIMEOUT_MS,
       maxRetries: config.maxRetries ?? DEFAULT_MAX_RETRIES,
@@ -459,6 +510,8 @@ class OpenConnectorImpl {
     const api = createOpenApi({
       request: (method, path, init) => send(buildOpenSpec(cfg, method, path, init), t),
       defaultConnectionName: cfg.connectionName,
+      sleep: (ms, signal) => t.sleep(ms, signal),
+      defaultTimeoutMs: cfg.timeoutMs,
     });
     // Install the class prototype (so `open instanceof OpenConnector`, `constructor.name`, and
     // inspection match the hosted client — the factory would otherwise leave a plain object),
@@ -484,6 +537,7 @@ export const OpenConnector = OpenConnectorImpl as unknown as {
  * An {@link OpenConnector} instance: methods + (precise/loose) service namespaces. The namespaces
  * carry this client's own per-call options (no `team` — the runtime is single-user).
  * A service id colliding with a member name (`execute` / `executeRaw` / `health` / `proxy` /
- * `catalog` / `apps`) loses only its path-2 sugar — call it via `execute("<service>.<action>", …)`.
+ * `catalog` / `apps` / `connect`) loses only its path-2 sugar — call it via
+ * `execute("<service>.<action>", …)`.
  */
 export type OpenConnector = OpenConnectorApi & ServiceNamespaces<OpenExecuteOptions>;

@@ -55,7 +55,7 @@ npm install @oomol-lab/connector   # or: bun add / pnpm add / yarn add
 - **Gateway** — 這個用戶端所對接、由 OOMOL 託管的 Connector 服務。它保管憑證、實際執行對 provider 的呼叫，並回傳統一格式的封裝結果。SDK 在本機**不**執行任何整合邏輯；它只負責組出請求、解析回應。
 - **Provider / service** — 一個第三方 API（`gmail`、`slack`、`github`、`notion`……）。它就是 action id 的 `<service>` 前綴。
 - **Action** — provider 上的一個操作，以 `"<service>.<action>"` 標識（例如 `gmail.search_threads`）。你只*呼叫* action，而不定義它們——它們都存在於 gateway 上。
-- **Connection** — 針對某個 provider、已授權並儲存起來的憑證。你完全不需碰 token；只要透過 `connectionName` 指名要使用哪個 connection 即可。**OAuth 與憑證的生命週期是 gateway 的工作，而非 SDK 的。**
+- **Connection** — 針對某個 provider、已授權並儲存起來的憑證。你完全不需碰 token；只要透過 `connectionName` 指名要使用哪個 connection 即可。憑證的生命週期由 gateway 掌管:`connect` 可以發起授權，但 token、更新與儲存始終留在伺服器端。
 - **Team** — 選用的租戶範圍限定。
 
 ## 你可以打造什麼
@@ -66,6 +66,7 @@ npm install @oomol-lab/connector   # or: bun add / pnpm add / yarn add
 | 存取尚未被建模成 action 的端點 | `proxy` | 直通上游 API，並由 gateway 注入該 connection 的憑證。 |
 | 把 action 餵給 LLM／建立動態表單 | `catalog` | 任何 action 或 provider 的執行期 JSON Schema（2020-12）——`catalog.action` / `catalog.actions` / `catalog.providers`。 |
 | 查看已連接了哪些帳號 | `apps.list` | 唯讀列出你已經連結的 connection。 |
+| 連接你自己的帳號 | `connect` | `connect.oauth`(非同步:授權 URL 加輪詢)、`connect.apiKey` / `connect.customCredential`(同步)。需要團隊 `creator`/`admin` 金鑰。參見[連接你自己的帳號](#連接你自己的帳號)。 |
 | 讓*你的*使用者連接*他們自己的*帳號 | `ProjectConnector` | 一個獨立的、以 project 為範圍的用戶端，代表你的終端使用者連接帳號並替他們執行 action。參見[為你的使用者連接帳號](#為你的使用者連接帳號)。 |
 | 自行執行開源伺服器 | `OpenConnector` | 針對你自架的執行環境，提供兩種呼叫路徑（`execute` 與 `open.<service>.<action>`）以及 `catalog` / `apps` / `health`。參見[自架執行環境](#自架執行環境)。 |
 
@@ -161,6 +162,42 @@ const { status, data } = await oomol.proxy("github", {
   query: { state: "open" },
 });
 ```
+
+## 連接你自己的帳號
+
+連結帳號通常在 console 完成，但兩個個人用戶端也都能在程式碼裡做。三種模式，兩種結果形態:
+
+```ts
+// OAuth — ASYNCHRONOUS. Send the user to the URL, then poll.
+const started = await oomol.connect.oauth("gmail", { returnUri: "https://app.example.com/done" });
+console.log(started.authorizationUrl);
+
+const settled = await oomol.connect.waitForConnection(started);
+if (settled.status === "connected") console.log("connection id:", settled.appId);
+
+// API key / custom credential — SYNCHRONOUS. The credential is validated and stored in one call.
+const openai = await oomol.connect.apiKey("openai", { apiKey: process.env.OPENAI_API_KEY! });
+const jira = await oomol.connect.customCredential("jira", {
+  values: { site: "acme.atlassian.net", email: "me@acme.com", token: process.env.JIRA_TOKEN! },
+});
+```
+
+`waitForConnection` 對所有終態都會**正常返回**:`connected`、`failed`(使用者拒絕授權，或被更新的一次嘗試頂替)以及 `expired`(使用者始終沒有完成)。只有你自己設定的 `maxWaitMs` 耗盡時它才會拋錯，錯誤碼為 `client_wait_timeout`。若你想自行控制輪詢節奏，或在行程重啟後恢復，請改用 `getAttempt(connectionRequestId)`。
+
+| 方法 | 回傳 | 說明 |
+| --- | --- | --- |
+| `connect.oauth(service, input?)` | `{ authorizationUrl, stateHandle, connectionRequestId, status, expiresAt }` | `input` 的 `returnUri`、`authorizationOptionIds`、`extra`、`secretExtra` 全部可選。輪詢用 `connectionRequestId`，**不是** `stateHandle`。 |
+| `connect.apiKey(service, { apiKey, extra?, comment? })` | 已就緒的 connection | `apiKey` 是**上游 provider** 的金鑰，絕不是你的 OOMOL 金鑰。 |
+| `connect.customCredential(service, { values, comment? })` | 已就緒的 connection | `values` 的鍵來自 provider 宣告的憑證欄位。 |
+| `connect.getAttempt(id)` | 一次 OAuth 嘗試 | 在 `expiresAt` 之後 24 小時內仍可讀取;未知 id 會以 `connection_request_not_found` 拒絕。 |
+| `connect.waitForConnection(startOrId, opts?)` | 已落定的嘗試 | `pollIntervalMs`(2 秒)、`maxWaitMs`(10 分鐘，即授權視窗)。 |
+
+> [!IMPORTANT]
+> **這些是管理操作，權限門檻高於執行 action。** 在託管 gateway 上，金鑰所屬使用者必須是所在團隊的 `creator` 或 `admin`;一般成員會被政策層以 403 拒絕，請求根本到不了後端。在自架執行環境上，它們需要執行環境的 **admin** token，執行環境 token(`oct_…`)會被拒絕。參見[自架執行環境](#自架執行環境)。
+
+這個呼叫面有意不做兩件事:**命名** connection(兩個後端都自行指派名稱，之後在 console 重新命名)以及**刪除**或重新授權 connection。
+
+完整可執行的範例導覽見 [`examples/connect.ts`](../../examples/connect.ts)。
 
 ## 為你的使用者連接帳號
 
@@ -267,8 +304,22 @@ const open = new OpenConnector({
 });
 ```
 
+`connect` 在這裡同樣可用，形態與託管用戶端完全一致，但執行環境上的 connection 管理屬於 **admin 範圍**，因此需要第二個 token:
+
+```ts
+const open = new OpenConnector({
+  runtimeToken: process.env.OOMOL_CONNECT_RUNTIME_TOKEN, // runs actions, reads the catalog
+  adminToken: process.env.OOMOL_CONNECT_ADMIN_TOKEN, // required by `connect.*` only
+});
+
+const started = await open.connect.oauth("gmail", { returnUri: "http://localhost:5173/done" });
+await open.connect.waitForConnection(started);
+```
+
+執行環境會拒絕這些路由上的執行環境 token，所以 SDK 從不往那裡送出它:`connect.*` 攜帶 `adminToken`，其餘呼叫攜帶 `runtimeToken`。不設定 `adminToken` 時，`connect.*` 會以未認證方式送出，這正好對應沒有設定 admin token 的執行環境。
+
 > [!NOTE]
-> Connection、憑證與 OAuth 設定都在執行環境的 **web console** 中管理——那屬於伺服器管理，刻意排除在這個 SDK 之外。用戶端只消費 console 所設定好的內容；connection 的選取有兩層（逐次呼叫的 `connectionName` 覆蓋用戶端層級的預設值——沒有 `using()` 範圍，也沒有 `team`）。而且和託管用戶端一樣，當某個 service id 與成員名稱（`execute` / `executeRaw` / `health` / `proxy` / `catalog` / `apps`）衝突時，仍可透過 `execute("<service>.<action>", …)` 正常運作——只有它的 namespace sugar 會被遮蔽。
+> connection 管理的其餘部分，包含刪除 connection、OAuth client 設定、簽發 token，仍在執行環境的 **web console** 中完成，刻意排除在這個 SDK 之外。connection 的選取有兩層(逐次呼叫的 `connectionName` 覆蓋用戶端層級的預設值，沒有 `using()` 範圍，也沒有 `team`)。而且和託管用戶端一樣，當某個 service id 與成員名稱(`execute` / `executeRaw` / `health` / `proxy` / `catalog` / `apps` / `connect`)衝突時，仍可透過 `execute("<service>.<action>", …)` 正常運作，只有它的 namespace sugar 會被遮蔽。
 
 完整可執行導覽——[`examples/open.ts`](../../examples/open.ts)。
 
@@ -284,9 +335,10 @@ const open = new OpenConnector({
 - **`oomol.proxy(service, { endpoint, method, query, headers, body })`** — 直通到上游 provider API（當還沒有 action 建模該端點時使用）。
 - **`oomol.catalog.action / .actions / .providers`** — 供動態 UI、驗證或 LLM 工具使用的執行期 JSON Schema。
 - **`oomol.apps.list()`** — 對你已連接的應用進行唯讀檢視。
+- **`oomol.connect.oauth / .apiKey / .customCredential`** — 連接你自己的帳號，並用 `getAttempt` / `waitForConnection` 跟進一次 OAuth 嘗試直到完成。屬於管理範圍:託管端需要團隊 `creator`/`admin` 金鑰，自架端需要 admin token。參見[連接你自己的帳號](#連接你自己的帳號)。
 - **`oomol.executeRaw(...)`** — 與 `execute` 類似，但會回傳 `{ data, executionId, actionId, message }`。
 - **`ProjectConnector`** — 一個獨立的用戶端（project API 金鑰），用來打造 SaaS 平台：`connect.oauth` / `connect.apiKey` / `connect.customCredential`、`waitForConnection`、用來讀取使用者在第三方平台身分的 `getUserProfile`、代表使用者的 `execute` / `executeRaw`，以及用來限定於單一使用者的 `forUser`。參見[為你的使用者連接帳號](#為你的使用者連接帳號)。
-- **`OpenConnector`** — 供開源自架執行環境使用的個人用戶端：兩種呼叫路徑（`execute` 與 `open.<service>.<action>`）、`catalog` / `apps`（外加 `health`、`catalog.search` / `.services`、`apps.listByService` / `.authenticated`），以選用的執行環境 token 驗證。參見[自架執行環境](#自架執行環境)。
+- **`OpenConnector`** — 供開源自架執行環境使用的個人用戶端：兩種呼叫路徑（`execute` 與 `open.<service>.<action>`）、`catalog` / `apps`（外加 `health`、`catalog.search` / `.services`、`apps.listByService` / `.authenticated`）以及 `connect`，以選用的執行環境 token 驗證(`connect` 另需 admin token)。參見[自架執行環境](#自架執行環境)。
 
 每個方法的可執行、經型別檢查的用法，請見 [`examples/`](../../examples)。
 

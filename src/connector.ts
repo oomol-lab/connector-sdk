@@ -7,6 +7,7 @@
  * `oomol.<service>.<action>(...)` resolves at runtime to `execute("<service>.<action>", ...)`).
  */
 
+import { createConnectApi, type ConnectApi } from "./connect";
 import { ConnectorError } from "./errors";
 import { assertHeadersSafe, defaultTransport, send, type RequestSpec, type Transport } from "./http";
 import type {
@@ -46,6 +47,7 @@ const RESERVED = new Set<string>([
   "proxy",
   "catalog",
   "apps",
+  "connect",
 ]);
 
 /** Methods of the typed Connector surface (path 1 + introspection). */
@@ -74,12 +76,18 @@ export interface ConnectorMethods {
   readonly catalog: CatalogApi;
   /** Connection introspection (read-only). */
   readonly apps: AppsApi;
+  /**
+   * Create a connection on your own account: `oauth` (asynchronous — returns an authorization URL
+   * to poll), `apiKey` / `customCredential` (synchronous). Requires the key's user to be `creator`
+   * or `admin` of the effective team; a plain member is refused by the gateway's policy layer.
+   */
+  readonly connect: ConnectApi<CallOptions>;
 }
 
 /**
  * The public Connector type: methods + (precise/loose) service namespaces. A service id colliding
- * with a reserved member (`execute` / `executeRaw` / `using` / `proxy` / `catalog` / `apps`)
- * loses only its path-2 sugar — call it via `execute("<service>.<action>", …)`.
+ * with a reserved member (`execute` / `executeRaw` / `using` / `proxy` / `catalog` / `apps` /
+ * `connect`) loses only its path-2 sugar — call it via `execute("<service>.<action>", …)`.
  */
 export type Connector = ConnectorMethods & ServiceNamespaces;
 
@@ -327,6 +335,19 @@ class ConnectorImpl implements ConnectorMethods {
         return envelope.data as ProviderMetadata[];
       },
     };
+  }
+
+  // --- connection creation ---
+
+  get connect(): ConnectApi<CallOptions> {
+    return createConnectApi<CallOptions>({
+      // The hosted base URL already ends in `/v1`, so the connection routes need no prefix.
+      prefix: "",
+      request: (method, path, init) =>
+        send(this.#buildSpec(method, path, { body: init.body, options: init.options }), this.#transport),
+      sleep: (ms, signal) => this.#transport.sleep(ms, signal),
+      defaultTimeoutMs: this.#config.timeoutMs,
+    });
   }
 
   // --- connection introspection (read-only) ---
