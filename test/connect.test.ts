@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { ConnectorError, OpenConnector } from "../src/index";
+import { ConnectorError, isRetryable, OpenConnector } from "../src/index";
 import { fail, ok, openRecorder, recorder } from "./helpers";
 
 const BASE = "https://connector.oomol.com/v1";
@@ -246,7 +246,7 @@ describe("connect.waitForConnection", () => {
       expect(err).toBeInstanceOf(ConnectorError);
       expect(err).toMatchObject({ code: "client_wait_timeout", status: 0 });
       expect((err as ConnectorError).data).toMatchObject({ connectionRequestId: "cr_1", status: "initiated" });
-      expect(isRetryableTimeout(err)).toBe(false);
+      expect(isRetryable(err)).toBe(false);
     } finally {
       vi.useRealTimers();
     }
@@ -254,6 +254,9 @@ describe("connect.waitForConnection", () => {
 
   it("clamps each poll's own timeout to the remaining budget", async () => {
     vi.useFakeTimers();
+    // `send` arms its per-attempt timeout with `setTimeout(…, spec.timeoutMs)`, and the injected
+    // sleep never uses a timer — so the recorded delays ARE the per-poll timeouts, in order.
+    const armed = vi.spyOn(globalThis, "setTimeout");
     try {
       let n = 0;
       const { oomol } = recorder(
@@ -263,8 +266,71 @@ describe("connect.waitForConnection", () => {
           vi.advanceTimersByTime(2000);
         } },
       );
-      // A 3s budget must never let a 30s per-request timeout run past the cap.
+      // A 3s budget must never let a 30s per-request timeout run past the cap: the first poll gets
+      // the full 3s, and the second — after the 2s inter-poll sleep — only the 1s still left.
       await oomol.connect.waitForConnection("cr_1", { maxWaitMs: 3000 });
+      expect(armed.mock.calls.map(([, ms]) => ms)).toEqual([3000, 1000]);
+    } finally {
+      armed.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
+  it("disables transport retries per poll, so no backoff can outlive maxWaitMs", async () => {
+    // `send`'s backoff and `Retry-After` waits sit OUTSIDE its per-attempt timeout, so a retrying
+    // poll could resume past the cap. The wait retries instead, one poll at a time.
+    const { oomol, calls, sleeps } = recorder((_call, attempt) =>
+      attempt === 0 ? fail("rate_limited", 429, { headers: { "retry-after": "60" } }) : ok(attemptPayload({ status: "connected" })),
+    );
+    const settled = await oomol.connect.waitForConnection("cr_1", { pollIntervalMs: 250 });
+
+    expect(settled.status).toBe("connected");
+    // Two polls, and the only wait between them is the loop's own 250ms — never the 60s Retry-After.
+    expect(calls).toHaveLength(2);
+    expect(sleeps).toEqual([250]);
+  });
+
+  it("surfaces the failure when every poll failed and the budget ran out", async () => {
+    vi.useFakeTimers();
+    try {
+      const { oomol } = recorder(() => fail("upstream_unavailable", 503), {}, { sleep: async () => {
+        vi.advanceTimersByTime(2000);
+      } });
+      // A wait that never once reached the server reports THAT, not a bare client_wait_timeout.
+      await expect(oomol.connect.waitForConnection("cr_1", { maxWaitMs: 3000 })).rejects.toMatchObject({
+        code: "upstream_unavailable",
+        status: 503,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("stops at a poll failure no retry can fix", async () => {
+    const { oomol, calls } = recorder(() => fail("connection_request_not_found", 404));
+    await expect(oomol.connect.waitForConnection("cr_nope")).rejects.toMatchObject({
+      code: "connection_request_not_found",
+      status: 404,
+    });
+    expect(calls).toHaveLength(1);
+  });
+
+  it("keeps the last attempt seen when a later poll fails and the budget runs out", async () => {
+    vi.useFakeTimers();
+    try {
+      let n = 0;
+      const { oomol } = recorder(
+        () => (n++ === 0 ? ok(attemptPayload()) : fail("internal_error", 500)),
+        {},
+        { sleep: async () => {
+          vi.advanceTimersByTime(2000);
+        } },
+      );
+      const err = await oomol.connect.waitForConnection("cr_1", { maxWaitMs: 5000 }).catch((e: unknown) => e);
+      expect(err).toMatchObject({ code: "client_wait_timeout", status: 0 });
+      expect((err as ConnectorError).data).toMatchObject({ connectionRequestId: "cr_1", status: "initiated" });
+      // The blip that ended the wait is preserved as the cause, not swallowed.
+      expect((err as ConnectorError).cause).toMatchObject({ code: "internal_error", status: 500 });
     } finally {
       vi.useRealTimers();
     }
@@ -291,11 +357,6 @@ describe("connect.waitForConnection", () => {
     });
   });
 });
-
-/** `client_wait_timeout` is terminal: retrying a wait the user never finished helps nobody. */
-function isRetryableTimeout(err: unknown): boolean {
-  return err instanceof ConnectorError && err.code === "client_wait_timeout" && err.status !== 0;
-}
 
 describe("connect — self-hosted runtime", () => {
   it("uses the same paths under the /v1 prefix on the runtime origin", async () => {

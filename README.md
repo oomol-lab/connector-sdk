@@ -182,7 +182,7 @@ const jira = await oomol.connect.customCredential("jira", {
 });
 ```
 
-`waitForConnection` **resolves** on every terminal status — `connected`, `failed` (the user declined, or a newer attempt superseded this one), and `expired` (they never finished). It throws only when your own `maxWaitMs` runs out, with code `client_wait_timeout`. Prefer `getAttempt(connectionRequestId)` when you drive your own polling, or resume after a restart.
+`waitForConnection` **resolves** on every terminal status — `connected`, `failed` (the user declined, or a newer attempt superseded this one), and `expired` (they never finished). It throws only when `maxWaitMs` runs out — yours, or the 10-minute default — with code `client_wait_timeout`. A retryable poll failure (429, 5xx, network) does not end the wait; it costs one poll and is retried on the next tick, inside that same cap. Prefer `getAttempt(connectionRequestId)` when you drive your own polling, or resume after a restart.
 
 | Method | Returns | Notes |
 | --- | --- | --- |
@@ -193,7 +193,7 @@ const jira = await oomol.connect.customCredential("jira", {
 | `connect.waitForConnection(startOrId, opts?)` | the settled attempt | `pollIntervalMs` (2s), `maxWaitMs` (10min, the authorization window). |
 
 > [!IMPORTANT]
-> **These are management calls, and the permission bar is higher than for running actions.** On the hosted gateway the key's user must be `creator` or `admin` of the effective team; a plain member is refused by the policy layer with a 403 before the request lands. On the self-hosted runtime they need the runtime's **admin** token — a runtime token (`oct_…`) is rejected. See [Self-hosted runtime](#self-hosted-runtime).
+> **These are management calls, and the permission bar is higher than for running actions.** On the hosted gateway the key's user must be `creator` or `admin` of the effective team; a plain member is refused by the policy layer with a 403 before the request lands. On the self-hosted runtime the bar depends on how you configured it: a runtime with no authentication at all accepts these unauthenticated, but the moment runtime tokens are in play an **admin** token becomes mandatory — without one the runtime answers 403 (`Configure an admin token to manage connections`), and with one configured a runtime token (`oct_…`) is rejected with 401. See [Self-hosted runtime](#self-hosted-runtime).
 
 Two things this surface deliberately does not do: **name** the connection (both backends assign the name themselves; rename it in the console afterwards) and **delete** or re-authorize one.
 
@@ -338,7 +338,7 @@ Full runnable tour — [`examples/open.ts`](./examples/open.ts).
 - **`oomol.connect.oauth / .apiKey / .customCredential`** — link an account of your own, plus `getAttempt` / `waitForConnection` to follow an OAuth attempt to completion. Management-scoped: needs a team `creator`/`admin` key (hosted) or the admin token (self-hosted). See [Connect your own account](#connect-your-own-account).
 - **`oomol.executeRaw(...)`** — like `execute`, but returns `{ data, executionId, actionId, message }`.
 - **`ProjectConnector`** — a separate client (project API key) to build a SaaS platform: `connect.oauth` / `connect.apiKey` / `connect.customCredential`, `waitForConnection`, `getUserProfile` to read who the user is on the provider, `execute` / `executeRaw` on a user's behalf, and `forUser` to scope to one user. See [Connect accounts for your users](#connect-accounts-for-your-users).
-- **`OpenConnector`** — the personal client for the open-source self-hosted runtime: both call paths (`execute` and `open.<service>.<action>`), `catalog` / `apps` (+ `health`, `catalog.search` / `.services`, `apps.listByService` / `.authenticated`), and `connect`, authenticated by an optional runtime token (plus an admin token for `connect`). See [Self-hosted runtime](#self-hosted-runtime).
+- **`OpenConnector`** — the personal client for the open-source self-hosted runtime: both call paths (`execute` and `open.<service>.<action>`), `catalog` / `apps` (+ `health`, `catalog.search` / `.services`, `apps.listByService` / `.authenticated`), and `connect`, authenticated by an optional runtime token (`connect` additionally requires the admin token on any runtime that enforces authentication). See [Self-hosted runtime](#self-hosted-runtime).
 
 See [`examples/`](./examples) for runnable, type-checked usage of every method.
 

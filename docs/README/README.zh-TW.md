@@ -182,7 +182,7 @@ const jira = await oomol.connect.customCredential("jira", {
 });
 ```
 
-`waitForConnection` 對所有終態都會**正常返回**:`connected`、`failed`(使用者拒絕授權，或被更新的一次嘗試頂替)以及 `expired`(使用者始終沒有完成)。只有你自己設定的 `maxWaitMs` 耗盡時它才會拋錯，錯誤碼為 `client_wait_timeout`。若你想自行控制輪詢節奏，或在行程重啟後恢復，請改用 `getAttempt(connectionRequestId)`。
+`waitForConnection` 對所有終態都會**正常返回**:`connected`、`failed`(使用者拒絕授權，或被更新的一次嘗試頂替)以及 `expired`(使用者始終沒有完成)。只有 `maxWaitMs` 耗盡時它才會拋錯(你自己設定的值，或預設的 10 分鐘)，錯誤碼為 `client_wait_timeout`。可重試的輪詢失敗(429、5xx、網路)不會結束等待，它只消耗一次輪詢，並在下一輪重試，且仍在同一個上限之內。若你想自行控制輪詢節奏，或在行程重啟後恢復，請改用 `getAttempt(connectionRequestId)`。
 
 | 方法 | 回傳 | 說明 |
 | --- | --- | --- |
@@ -193,7 +193,7 @@ const jira = await oomol.connect.customCredential("jira", {
 | `connect.waitForConnection(startOrId, opts?)` | 已落定的嘗試 | `pollIntervalMs`(2 秒)、`maxWaitMs`(10 分鐘，即授權視窗)。 |
 
 > [!IMPORTANT]
-> **這些是管理操作，權限門檻高於執行 action。** 在託管 gateway 上，金鑰所屬使用者必須是所在團隊的 `creator` 或 `admin`;一般成員會被政策層以 403 拒絕，請求根本到不了後端。在自架執行環境上，它們需要執行環境的 **admin** token，執行環境 token(`oct_…`)會被拒絕。參見[自架執行環境](#自架執行環境)。
+> **這些是管理操作，權限門檻高於執行 action。** 在託管 gateway 上，金鑰所屬使用者必須是所在團隊的 `creator` 或 `admin`;一般成員會被政策層以 403 拒絕，請求根本到不了後端。在自架執行環境上，門檻取決於你怎麼設定:完全沒開認證的執行環境會直接接受這些未認證請求，但只要用上了執行環境 token，**admin** token 就變成必需的。沒設定 admin token 時執行環境回 403(`Configure an admin token to manage connections`)，設定之後執行環境 token(`oct_…`)會以 401 被拒絕。參見[自架執行環境](#自架執行環境)。
 
 這個呼叫面有意不做兩件事:**命名** connection(兩個後端都自行指派名稱，之後在 console 重新命名)以及**刪除**或重新授權 connection。
 
@@ -338,7 +338,7 @@ await open.connect.waitForConnection(started);
 - **`oomol.connect.oauth / .apiKey / .customCredential`** — 連接你自己的帳號，並用 `getAttempt` / `waitForConnection` 跟進一次 OAuth 嘗試直到完成。屬於管理範圍:託管端需要團隊 `creator`/`admin` 金鑰，自架端需要 admin token。參見[連接你自己的帳號](#連接你自己的帳號)。
 - **`oomol.executeRaw(...)`** — 與 `execute` 類似，但會回傳 `{ data, executionId, actionId, message }`。
 - **`ProjectConnector`** — 一個獨立的用戶端（project API 金鑰），用來打造 SaaS 平台：`connect.oauth` / `connect.apiKey` / `connect.customCredential`、`waitForConnection`、用來讀取使用者在第三方平台身分的 `getUserProfile`、代表使用者的 `execute` / `executeRaw`，以及用來限定於單一使用者的 `forUser`。參見[為你的使用者連接帳號](#為你的使用者連接帳號)。
-- **`OpenConnector`** — 供開源自架執行環境使用的個人用戶端：兩種呼叫路徑（`execute` 與 `open.<service>.<action>`）、`catalog` / `apps`（外加 `health`、`catalog.search` / `.services`、`apps.listByService` / `.authenticated`）以及 `connect`，以選用的執行環境 token 驗證(`connect` 另需 admin token)。參見[自架執行環境](#自架執行環境)。
+- **`OpenConnector`** — 供開源自架執行環境使用的個人用戶端：兩種呼叫路徑（`execute` 與 `open.<service>.<action>`）、`catalog` / `apps`（外加 `health`、`catalog.search` / `.services`、`apps.listByService` / `.authenticated`）以及 `connect`，以選用的執行環境 token 驗證(在任何啟用認證的執行環境上，`connect` 另需 admin token)。參見[自架執行環境](#自架執行環境)。
 
 每個方法的可執行、經型別檢查的用法，請見 [`examples/`](../../examples)。
 

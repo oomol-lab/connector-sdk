@@ -14,15 +14,16 @@
  * Permissions are NOT symmetric across the two backends, and the SDK cannot paper over that:
  * - hosted: the API key's user must be `creator` or `admin` of the effective team. A plain member
  *   is refused by the gateway's policy layer before the request reaches the connector.
- * - self-hosted: the runtime's ADMIN token is required; a runtime token (`oct_…`) is rejected with
- *   `unauthorized`. Pass it as `adminToken` when constructing the client.
+ * - self-hosted: it depends on how the runtime is configured. One with no authentication at all
+ *   accepts these unauthenticated; once runtime tokens are enforced an ADMIN token is required, and
+ *   a runtime token (`oct_…`) is rejected with `unauthorized`. Pass it as `adminToken`.
  *
  * What this surface deliberately does NOT do: name the connection (both backends assign the name
  * themselves at connect time — rename it afterwards in the console), re-authorize an existing
  * connection, or delete one.
  */
 
-import { ConnectorError } from "./errors";
+import { ConnectorError, isRetryable } from "./errors";
 import { abortErrorFrom, type Envelope } from "./http";
 import type { ConnectedApp } from "./types";
 
@@ -117,7 +118,10 @@ export interface ConnectCustomCredentialInput {
 export interface ConnectionWaitTuning {
   /** Delay between status polls. Default 2000ms. */
   pollIntervalMs?: number;
-  /** Overall cap on how long to wait for the user to finish. Default 600_000ms (the authorization window). */
+  /**
+   * Hard wall-clock cap on the whole wait, honored to the millisecond: no poll starts, runs, or
+   * sleeps past it. Default 600_000ms (the authorization window).
+   */
   maxWaitMs?: number;
 }
 
@@ -145,6 +149,10 @@ export interface ConnectApi<O> {
    * `initiated`→`expired` flip, which does NOT throw (the user simply never finished). Throws
    * `ConnectorError` code `client_wait_timeout` only if `maxWaitMs` elapses first; an aborted
    * `signal` rejects with the standard `AbortError`.
+   *
+   * The wait owns its own retry policy: a retryable poll failure (429, 5xx, network) costs one
+   * poll and is retried on the next tick, so a blip never ends a wait the user is still in. A
+   * failure retrying cannot fix rejects immediately, and so does a wait whose every poll failed.
    */
   waitForConnection(
     startOrId: string | ConnectionAttemptStart | ConnectionAttempt,
@@ -182,7 +190,7 @@ function defined(entries: Record<string, unknown>): Record<string, unknown> {
 }
 
 /** Build the `connect` namespace over one client's request seam. */
-export function createConnectApi<O extends { signal?: AbortSignal; timeoutMs?: number }>(
+export function createConnectApi<O extends { signal?: AbortSignal; timeoutMs?: number; retries?: number }>(
   deps: ConnectDeps<O>,
 ): ConnectApi<O> {
   const connectPath = (service: string, mode = ""): string =>
@@ -229,25 +237,38 @@ export function createConnectApi<O extends { signal?: AbortSignal; timeoutMs?: n
       const maxWaitMs = options?.maxWaitMs ?? DEFAULT_MAX_WAIT_MS;
       const start = Date.now();
       let last: ConnectionAttempt | undefined;
+      let lastError: unknown;
       for (;;) {
         if (options?.signal?.aborted) throw abortErrorFrom(options.signal);
         // Enforce maxWaitMs as a hard wall-clock cap: never START a poll once the budget is spent...
         const remaining = maxWaitMs - (Date.now() - start);
         if (remaining <= 0) {
+          // A wait whose every poll failed surfaces that failure rather than hiding it behind the
+          // cap — the transient tolerance below must not turn a broken endpoint into a timeout.
+          if (last === undefined && lastError !== undefined) throw lastError;
           throw new ConnectorError(
             `waitForConnection exceeded maxWaitMs (${maxWaitMs}ms); the authorization is still pending`,
-            { code: "client_wait_timeout", status: 0, data: last },
+            { code: "client_wait_timeout", status: 0, data: last, cause: lastError },
           );
         }
-        // ...and clamp THIS poll's own per-request timeout to the remaining budget, so a poll started
-        // near the deadline cannot run (via its timeout + retries) past the cap.
-        last = await getAttempt(id, {
-          ...(options as O | undefined),
-          timeoutMs: Math.min(options?.timeoutMs ?? deps.defaultTimeoutMs, remaining),
-        } as O);
-        // Any terminal status (connected | failed | expired) ends the wait — never throw for a user
-        // who simply hasn't finished; the natural initiated→expired flip returns here too.
-        if (last.status !== "initiated") return last;
+        try {
+          // ...clamp THIS poll's own per-request timeout to the remaining budget, and turn the
+          // transport's retries OFF: their backoff and `Retry-After` waits sit outside `timeoutMs`,
+          // so a retrying poll could resume well past the deadline. This loop is the retry — a
+          // transient failure costs one poll and is tried again below, inside the same budget.
+          last = await getAttempt(id, {
+            ...(options as O | undefined),
+            timeoutMs: Math.min(options?.timeoutMs ?? deps.defaultTimeoutMs, remaining),
+            retries: 0,
+          } as O);
+          // Any terminal status (connected | failed | expired) ends the wait — never throw for a
+          // user who simply hasn't finished; the natural initiated→expired flip returns here too.
+          if (last.status !== "initiated") return last;
+        } catch (err) {
+          // A cancelled wait, or a failure no retry can fix (unknown id, forbidden), ends it here.
+          if (options?.signal?.aborted || !isRetryable(err)) throw err;
+          lastError = err;
+        }
         // Clamp the inter-poll sleep to the remaining budget; the loop-top check then turns a fully
         // elapsed budget into client_wait_timeout instead of sleeping or polling past the deadline.
         await deps.sleep(Math.min(pollIntervalMs, Math.max(0, maxWaitMs - (Date.now() - start))), options?.signal);

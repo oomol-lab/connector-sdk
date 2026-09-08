@@ -394,9 +394,10 @@ export interface OpenConnectorConfig {
   runtimeToken?: string;
   /**
    * The runtime's ADMIN token (`OOMOL_CONNECT_ADMIN_TOKEN`), used ONLY by the `connect` namespace —
-   * connection management is admin-scoped, and the runtime rejects a runtime token there. Optional:
-   * a runtime with no admin token configured accepts management calls unauthenticated (and one that
-   * has runtime tokens but no admin token refuses them outright, by its own design).
+   * connection management is admin-scoped, and the runtime rejects a runtime token (`oct_…`) there
+   * with 401. Optional, because whether one is needed is the runtime's call: an instance with no
+   * authentication at all accepts management calls unauthenticated, while one that enforces runtime
+   * tokens but has no admin token of its own refuses them outright with 403, by its own design.
    */
   adminToken?: string;
   /** Client-level default connection name, applied to `execute` calls (per-call option wins). */

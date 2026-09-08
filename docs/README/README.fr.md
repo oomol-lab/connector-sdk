@@ -182,7 +182,7 @@ const jira = await oomol.connect.customCredential("jira", {
 });
 ```
 
-`waitForConnection` **se résout** sur tous les statuts terminaux : `connected`, `failed` (l'utilisateur a refusé, ou une tentative plus récente a supplanté celle-ci) et `expired` (il n'est jamais allé au bout). Elle ne lève une erreur que lorsque votre propre `maxWaitMs` est épuisé, avec le code `client_wait_timeout`. Préférez `getAttempt(connectionRequestId)` si vous pilotez vous-même l'interrogation, ou pour reprendre après un redémarrage.
+`waitForConnection` **se résout** sur tous les statuts terminaux : `connected`, `failed` (l'utilisateur a refusé, ou une tentative plus récente a supplanté celle-ci) et `expired` (il n'est jamais allé au bout). Elle ne lève une erreur que lorsque `maxWaitMs` est épuisé (le vôtre, ou la valeur par défaut de 10 minutes), avec le code `client_wait_timeout`. Un échec d'interrogation réessayable (429, 5xx, réseau) ne met pas fin à l'attente : il coûte une interrogation et est réessayé au tour suivant, dans cette même limite. Préférez `getAttempt(connectionRequestId)` si vous pilotez vous-même l'interrogation, ou pour reprendre après un redémarrage.
 
 | Méthode | Retourne | Notes |
 | --- | --- | --- |
@@ -193,7 +193,7 @@ const jira = await oomol.connect.customCredential("jira", {
 | `connect.waitForConnection(startOrId, opts?)` | la tentative aboutie | `pollIntervalMs` (2 s), `maxWaitMs` (10 min, la fenêtre d'autorisation). |
 
 > [!IMPORTANT]
-> **Ce sont des opérations d'administration, et le niveau de droits exigé est plus élevé que pour exécuter des actions.** Sur la passerelle hébergée, l'utilisateur de la clé doit être `creator` ou `admin` de l'équipe concernée ; un simple membre est refusé par la couche de politique avec un 403 avant même que la requête n'atteigne le backend. Sur le runtime auto-hébergé, elles exigent le jeton **admin** du runtime ; un jeton de runtime (`oct_…`) est rejeté. Voir [Runtime auto-hébergé](#runtime-auto-hébergé).
+> **Ce sont des opérations d'administration, et le niveau de droits exigé est plus élevé que pour exécuter des actions.** Sur la passerelle hébergée, l'utilisateur de la clé doit être `creator` ou `admin` de l'équipe concernée ; un simple membre est refusé par la couche de politique avec un 403 avant même que la requête n'atteigne le backend. Sur le runtime auto-hébergé, le niveau exigé dépend de votre configuration : un runtime sans aucune authentification les accepte sans jeton, mais dès que des jetons de runtime entrent en jeu, un jeton **admin** devient obligatoire. Sans lui le runtime répond 403 (`Configure an admin token to manage connections`), et lorsqu'il en a un, un jeton de runtime (`oct_…`) est rejeté avec un 401. Voir [Runtime auto-hébergé](#runtime-auto-hébergé).
 
 Deux choses que cette surface ne fait délibérément pas : **nommer** la connexion (les deux backends attribuent le nom eux-mêmes, renommez-la ensuite depuis la console) et **supprimer** ou ré-autoriser une connexion.
 
@@ -338,7 +338,7 @@ Visite guidée complète exécutable — [`examples/open.ts`](../../examples/ope
 - **`oomol.connect.oauth / .apiKey / .customCredential`** — liez un compte à vous, avec `getAttempt` / `waitForConnection` pour suivre une tentative OAuth jusqu'à son terme. Portée d'administration : exige une clé `creator`/`admin` de l'équipe (hébergé) ou le jeton admin (auto-hébergé). Voir [Connecter votre propre compte](#connecter-votre-propre-compte).
 - **`oomol.executeRaw(...)`** — comme `execute`, mais renvoie `{ data, executionId, actionId, message }`.
 - **`ProjectConnector`** — un client distinct (clé API de projet) pour bâtir une plateforme SaaS : `connect.oauth` / `connect.apiKey` / `connect.customCredential`, `waitForConnection`, `getUserProfile` pour lire l'identité de l'utilisateur côté fournisseur, `execute` / `executeRaw` au nom d'un utilisateur, et `forUser` pour cibler un seul utilisateur. Voir [Connecter les comptes de vos utilisateurs](#connecter-les-comptes-de-vos-utilisateurs).
-- **`OpenConnector`** — le client personnel pour le runtime open source auto-hébergé : les deux voies d'appel (`execute` et `open.<service>.<action>`), `catalog` / `apps` (+ `health`, `catalog.search` / `.services`, `apps.listByService` / `.authenticated`) et `connect`, authentifié par un jeton de runtime optionnel (plus un jeton admin pour `connect`). Voir [Runtime auto-hébergé](#runtime-auto-hébergé).
+- **`OpenConnector`** — le client personnel pour le runtime open source auto-hébergé : les deux voies d'appel (`execute` et `open.<service>.<action>`), `catalog` / `apps` (+ `health`, `catalog.search` / `.services`, `apps.listByService` / `.authenticated`) et `connect`, authentifié par un jeton de runtime optionnel (`connect` exige en plus le jeton admin sur tout runtime qui applique une authentification). Voir [Runtime auto-hébergé](#runtime-auto-hébergé).
 
 Consultez [`examples/`](../../examples) pour un usage exécutable et vérifié par typage de chaque méthode.
 

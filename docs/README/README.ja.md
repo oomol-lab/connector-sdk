@@ -182,7 +182,7 @@ const jira = await oomol.connect.customCredential("jira", {
 });
 ```
 
-`waitForConnection` はすべての終了状態で**正常に解決します**。`connected`、`failed`（ユーザーが拒否した、またはより新しい試行に置き換えられた）、`expired`（ユーザーが最後まで進めなかった）のいずれもです。例外を投げるのは、あなた自身が指定した `maxWaitMs` を使い切ったときだけで、エラーコードは `client_wait_timeout` です。ポーリングを自分で制御したい場合や、プロセス再起動後に再開したい場合は `getAttempt(connectionRequestId)` を使ってください。
+`waitForConnection` はすべての終了状態で**正常に解決します**。`connected`、`failed`（ユーザーが拒否した、またはより新しい試行に置き換えられた）、`expired`（ユーザーが最後まで進めなかった）のいずれもです。例外を投げるのは `maxWaitMs`（あなたが指定した値、または既定の 10 分）を使い切ったときだけで、エラーコードは `client_wait_timeout` です。再試行可能なポーリング失敗（429、5xx、ネットワーク）は待機を終わらせず、1 回分のポーリングを消費して次の周回で再試行されます。もちろん同じ上限の内側です。ポーリングを自分で制御したい場合や、プロセス再起動後に再開したい場合は `getAttempt(connectionRequestId)` を使ってください。
 
 | メソッド | 戻り値 | 備考 |
 | --- | --- | --- |
@@ -193,7 +193,7 @@ const jira = await oomol.connect.customCredential("jira", {
 | `connect.waitForConnection(startOrId, opts?)` | 確定した試行 | `pollIntervalMs`（2 秒）、`maxWaitMs`（10 分、認可ウィンドウと同じ）。 |
 
 > [!IMPORTANT]
-> **これらは管理操作であり、アクション実行よりも権限のハードルが高くなります。** ホスト型ゲートウェイでは、キーの所有ユーザーが対象チームの `creator` または `admin` である必要があります。一般メンバーはポリシー層で 403 として拒否され、リクエストはバックエンドに届きません。セルフホストランタイムでは、ランタイムの **admin** トークンが必要で、ランタイムトークン（`oct_…`）は拒否されます。[セルフホストランタイム](#セルフホストランタイム)を参照。
+> **これらは管理操作であり、アクション実行よりも権限のハードルが高くなります。** ホスト型ゲートウェイでは、キーの所有ユーザーが対象チームの `creator` または `admin` である必要があります。一般メンバーはポリシー層で 403 として拒否され、リクエストはバックエンドに届きません。セルフホストランタイムでの権限はランタイムの設定次第です。認証を一切設定していないランタイムは、これらを未認証のまま受け付けます。しかしランタイムトークンを使い始めた時点で **admin** トークンが必須になります。admin トークンが未設定なら 403（`Configure an admin token to manage connections`）、設定済みならランタイムトークン（`oct_…`）は 401 で拒否されます。[セルフホストランタイム](#セルフホストランタイム)を参照。
 
 この API があえて行わないことが 2 つあります。コネクションの**命名**（どちらのバックエンドも自分で名前を割り当てます。あとからコンソールで変更してください）と、**削除**や再認可です。
 
@@ -338,7 +338,7 @@ await open.connect.waitForConnection(started);
 - **`oomol.connect.oauth / .apiKey / .customCredential`** — 自分のアカウントを接続し、`getAttempt` / `waitForConnection` で OAuth の試行を完了まで追跡します。管理スコープです: ホスト型ではチームの `creator`/`admin` キー、セルフホストでは admin トークンが必要です。[自分のアカウントを接続する](#自分のアカウントを接続する)を参照。
 - **`oomol.executeRaw(...)`** — `execute` と同様ですが、`{ data, executionId, actionId, message }` を返します。
 - **`ProjectConnector`** — SaaS プラットフォームを構築するための別クライアント（プロジェクト API キー）: `connect.oauth` / `connect.apiKey` / `connect.customCredential`、`waitForConnection`、プロバイダー側のユーザー情報を読む `getUserProfile`、ユーザーの代わりに実行する `execute` / `executeRaw`、そして1人のユーザーにスコープする `forUser`。[ユーザーのアカウントを接続する](#ユーザーのアカウントを接続する)を参照。
-- **`OpenConnector`** — オープンソースのセルフホストランタイム向けの個人用クライアント: 両方の呼び出しパス（`execute` と `open.<service>.<action>`）、`catalog` / `apps`（＋ `health`、`catalog.search` / `.services`、`apps.listByService` / `.authenticated`）、そして `connect`。任意のランタイムトークンで認証されます（`connect` には別途 admin トークンが必要）。[セルフホストランタイム](#セルフホストランタイム)を参照。
+- **`OpenConnector`** — オープンソースのセルフホストランタイム向けの個人用クライアント: 両方の呼び出しパス（`execute` と `open.<service>.<action>`）、`catalog` / `apps`（＋ `health`、`catalog.search` / `.services`、`apps.listByService` / `.authenticated`）、そして `connect`。任意のランタイムトークンで認証されます（認証を有効にしているランタイムでは `connect` に別途 admin トークンが必要）。[セルフホストランタイム](#セルフホストランタイム)を参照。
 
 すべてのメソッドの実行可能で型チェック済みの使用例は [`examples/`](../../examples) を参照してください。
 

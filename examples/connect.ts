@@ -1,7 +1,14 @@
 /**
  * Connect an account on YOUR OWN account — the three authentication modes.
  *
- * Run with a real API key:
+ * Run with a real API key. Each flow needs the credential IT connects, and is skipped when that
+ * variable is unset, so the OAuth tour alone needs nothing beyond your OOMOL key:
+ *
+ *   OOMOL_API_KEY=api-...                          # required — authorizes every call below
+ *   OPENAI_API_KEY=sk-...                          # optional — runs the `apiKey()` flow
+ *   JIRA_SITE=... JIRA_EMAIL=... JIRA_TOKEN=...    # optional — runs the `customCredential()` flow
+ *   OOMOL_CONNECT_URL=http://localhost:3000        # optional — runs the self-hosted flow
+ *
  *   OOMOL_API_KEY=api-... bun run examples/connect.ts
  *
  * Permission note: these calls are management operations. The key's user must be `creator` or
@@ -45,10 +52,10 @@ async function oauth() {
   console.log("read back:", (await oomol.connect.getAttempt(started.connectionRequestId)).status);
 }
 
-async function apiKey() {
+async function apiKey(providerKey: string) {
   // SYNCHRONOUS: the gateway validates the key against the provider and stores it in this one call.
   const app = await oomol.connect.apiKey("openai", {
-    apiKey: process.env.OPENAI_API_KEY!, // the UPSTREAM provider's key, never your OOMOL key
+    apiKey: providerKey, // the UPSTREAM provider's key, never your OOMOL key
     comment: "billing account",
     // Providers that need more than a key declare extra fields — see catalog.providers().
     // extra: { baseUrl: "https://eu.example.com" },
@@ -56,15 +63,9 @@ async function apiKey() {
   console.log("ready:", app.id, app.service, app.connectionName);
 }
 
-async function customCredential() {
+async function customCredential(values: Record<string, string>) {
   // SYNCHRONOUS too. `values` is keyed by the provider's declared credential field keys.
-  const app = await oomol.connect.customCredential("jira", {
-    values: {
-      site: "acme.atlassian.net",
-      email: "me@acme.com",
-      token: process.env.JIRA_TOKEN!,
-    },
-  });
+  const app = await oomol.connect.customCredential("jira", { values });
   console.log("ready:", app.id, app.connectionName);
 
   // The connection is immediately usable — select it by name on any call.
@@ -77,9 +78,9 @@ async function customCredential() {
  * A runtime token (`oct_…`) is rejected on these routes, so the SDK never sends one for them —
  * `connect.*` carries `adminToken`, every other call carries `runtimeToken`.
  */
-async function selfHosted() {
+async function selfHosted(baseUrl: string) {
   const open = new OpenConnector({
-    baseUrl: process.env.OOMOL_CONNECT_URL ?? "http://localhost:3000", // the server ORIGIN, not a /v1 url
+    baseUrl, // the server ORIGIN, not a /v1 url
     runtimeToken: process.env.OOMOL_CONNECT_RUNTIME_TOKEN, // runs actions, reads the catalog
     adminToken: process.env.OOMOL_CONNECT_ADMIN_TOKEN, // required by connect.* only
   });
@@ -90,25 +91,39 @@ async function selfHosted() {
   console.log("settled as:", settled.status, settled.appId);
 
   // The credential modes are synchronous here too.
-  const openai = await open.connect.apiKey("openai", { apiKey: process.env.OPENAI_API_KEY! });
+  const openai = await open.connect.apiKey("openai", { apiKey: process.env.OPENAI_API_KEY ?? "sk-demo" });
   console.log("ready:", openai.id, openai.connectionName);
 
-  // Leave `adminToken` unset and these calls go out unauthenticated — right for a runtime that has
-  // no admin token configured, and a clear 401 from one that does.
+  // The self-hosted permission bar depends on how the runtime is configured. A runtime with no
+  // authentication at all accepts these unauthenticated. Once runtime tokens are in play an admin
+  // token becomes mandatory: without one the runtime answers 403 ("Configure an admin token to
+  // manage connections"), and with one configured a runtime token (`oct_…`) is 401.
 }
 
 async function main() {
   try {
     await oauth();
-    await apiKey();
-    await customCredential();
-    await selfHosted();
+
+    // Each credential flow sends a REAL secret upstream, so run only the ones you configured —
+    // firing them unset would just ask the gateway to validate an empty credential.
+    const providerKey = process.env.OPENAI_API_KEY;
+    if (providerKey) await apiKey(providerKey);
+    else console.log("skipping apiKey(): set OPENAI_API_KEY to run it");
+
+    const { JIRA_SITE: site, JIRA_EMAIL: email, JIRA_TOKEN: token } = process.env;
+    if (site && email && token) await customCredential({ site, email, token });
+    else console.log("skipping customCredential(): set JIRA_SITE, JIRA_EMAIL and JIRA_TOKEN to run it");
+
+    const openUrl = process.env.OOMOL_CONNECT_URL;
+    if (openUrl) await selfHosted(openUrl);
+    else console.log("skipping selfHosted(): set OOMOL_CONNECT_URL to run it");
   } catch (err) {
     if (err instanceof ConnectorError) {
       // Worth branching on: `user_oauth_client_required` (409, no OAuth client configured for this
       // provider yet), `invalid_input` (400 bad field / 403 "team manager role required" — check
       // `status`, not just the code), `connection_alias_conflict` (409), and on a self-hosted
-      // runtime `unauthorized` (401 — an admin token is required here, a runtime token is not).
+      // runtime `unauthorized` (401, the admin token is wrong or a runtime token was sent) or
+      // `forbidden` (403, the runtime enforces auth but has no admin token configured yet).
       console.error(`[${err.status}] ${err.code}: ${err.message}`);
       return;
     }

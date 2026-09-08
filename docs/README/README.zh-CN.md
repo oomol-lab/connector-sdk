@@ -182,7 +182,7 @@ const jira = await oomol.connect.customCredential("jira", {
 });
 ```
 
-`waitForConnection` 对所有终态都会**正常返回**:`connected`、`failed`(用户拒绝授权,或被更新的一次尝试顶替)以及 `expired`(用户始终没有完成)。只有你自己设定的 `maxWaitMs` 耗尽时它才抛错,错误码为 `client_wait_timeout`。若你想自己控制轮询节奏,或在进程重启后恢复,请改用 `getAttempt(connectionRequestId)`。
+`waitForConnection` 对所有终态都会**正常返回**:`connected`、`failed`(用户拒绝授权,或被更新的一次尝试顶替)以及 `expired`(用户始终没有完成)。只有 `maxWaitMs` 耗尽时它才抛错(你自己设定的值,或默认的 10 分钟),错误码为 `client_wait_timeout`。可重试的轮询失败(429、5xx、网络)不会结束等待,它只消耗一次轮询,并在下一轮重试,且仍在同一个上限之内。若你想自己控制轮询节奏,或在进程重启后恢复,请改用 `getAttempt(connectionRequestId)`。
 
 | 方法 | 返回 | 说明 |
 | --- | --- | --- |
@@ -193,7 +193,7 @@ const jira = await oomol.connect.customCredential("jira", {
 | `connect.waitForConnection(startOrId, opts?)` | 已落定的尝试 | `pollIntervalMs`(2 秒)、`maxWaitMs`(10 分钟,即授权窗口)。 |
 
 > [!IMPORTANT]
-> **这些是管理操作,权限门槛高于运行 action。** 在托管网关上,密钥所属用户必须是所在团队的 `creator` 或 `admin`;普通成员会被策略层以 403 拒绝,请求根本到不了后端。在自托管运行时上,它们需要运行时的 **admin** 令牌,运行时令牌(`oct_…`)会被拒绝。参见[自托管运行时](#自托管运行时)。
+> **这些是管理操作,权限门槛高于运行 action。** 在托管网关上,密钥所属用户必须是所在团队的 `creator` 或 `admin`;普通成员会被策略层以 403 拒绝,请求根本到不了后端。在自托管运行时上,门槛取决于你怎么配置:完全没开认证的运行时会直接接受这些未认证请求,但只要用上了运行时令牌,**admin** 令牌就变成必需的。没配 admin 令牌时运行时回 403(`Configure an admin token to manage connections`),配了之后运行时令牌(`oct_…`)会以 401 被拒绝。参见[自托管运行时](#自托管运行时)。
 
 这个调用面有意不做两件事:**命名**连接(两个后端都自行分配名称,之后在控制台重命名)以及**删除**或重新授权连接。
 
@@ -338,7 +338,7 @@ await open.connect.waitForConnection(started);
 - **`oomol.connect.oauth / .apiKey / .customCredential`** — 连接你自己的账户,并用 `getAttempt` / `waitForConnection` 跟进一次 OAuth 尝试直到完成。属于管理作用域:托管端需要团队 `creator`/`admin` 密钥,自托管端需要 admin 令牌。参见[连接你自己的账户](#连接你自己的账户)。
 - **`oomol.executeRaw(...)`** — 与 `execute` 类似,但返回 `{ data, executionId, actionId, message }`。
 - **`ProjectConnector`** — 一个独立的客户端(项目 API 密钥),用于构建 SaaS 平台:`connect.oauth` / `connect.apiKey` / `connect.customCredential`、`waitForConnection`、用于读取用户在第三方平台身份的 `getUserProfile`、代表用户的 `execute` / `executeRaw`,以及用于限定到单个用户的 `forUser`。参见[为你的用户连接账户](#为你的用户连接账户)。
-- **`OpenConnector`** — 面向开源自托管运行时的个人客户端:两种调用路径(`execute` 与 `open.<service>.<action>`)、`catalog` / `apps`(外加 `health`、`catalog.search` / `.services`、`apps.listByService` / `.authenticated`)以及 `connect`,由一个可选的运行时令牌进行认证(`connect` 另需 admin 令牌)。参见[自托管运行时](#自托管运行时)。
+- **`OpenConnector`** — 面向开源自托管运行时的个人客户端:两种调用路径(`execute` 与 `open.<service>.<action>`)、`catalog` / `apps`(外加 `health`、`catalog.search` / `.services`、`apps.listByService` / `.authenticated`)以及 `connect`,由一个可选的运行时令牌进行认证(在任何启用了认证的运行时上,`connect` 另需 admin 令牌)。参见[自托管运行时](#自托管运行时)。
 
 每个方法的可运行、经过类型检查的用法见 [`examples/`](../../examples)。
 
