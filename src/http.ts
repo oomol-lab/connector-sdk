@@ -176,6 +176,31 @@ function runtimeErrorBody(parsed: unknown): { code: string; message: string } | 
   return typeof code === "string" && typeof message === "string" ? { code, message } : undefined;
 }
 
+/**
+ * Extract the hosted gateway's FLAT error body — `{ errorCode, errorMessage, executionId?, data? }`.
+ * Its global error handler answers in this shape on every route that throws (catalog, apps, the
+ * connect surface); only the action/proxy paths wrap failures in the `{ success: false, … }`
+ * envelope. Without this, a real code like `user_oauth_client_required` would degrade to the
+ * `provider_error` fallback and the message would be lost.
+ */
+function flatErrorBody(parsed: unknown): Envelope | undefined {
+  if (typeof parsed !== "object" || parsed === null) return undefined;
+  const { errorCode, errorMessage, executionId, data } = parsed as {
+    errorCode?: unknown;
+    errorMessage?: unknown;
+    executionId?: unknown;
+    data?: unknown;
+  };
+  if (typeof errorCode !== "string") return undefined;
+  return {
+    success: false,
+    message: typeof errorMessage === "string" ? errorMessage : undefined,
+    errorCode,
+    data: data ?? null,
+    ...(typeof executionId === "string" ? { meta: { executionId } } : {}),
+  };
+}
+
 async function parseBody(res: Response): Promise<Envelope | undefined> {
   const text = await res.text();
   if (!text) return undefined;
@@ -197,6 +222,9 @@ async function parseBody(res: Response): Promise<Envelope | undefined> {
   // The self-hosted runtime's middleware failure shape — map it onto the envelope's error fields.
   const error = runtimeErrorBody(parsed);
   if (error) return { success: false, message: error.message, errorCode: error.code, data: null };
+  // The hosted gateway's flat `{ errorCode, errorMessage }` shape — same mapping.
+  const flat = flatErrorBody(parsed);
+  if (flat) return flat;
   // Unrecognized non-ok JSON (an intermediary's error page): keep any top-level `message` for the
   // error text and carry the whole body as `data` for debugging.
   const message = (parsed as { message?: unknown } | null)?.message;

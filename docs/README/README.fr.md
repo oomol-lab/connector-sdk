@@ -55,7 +55,7 @@ Aucune architecture à apprendre — seulement cinq mots, car tout le gros du tr
 - **Passerelle** — le service hébergé OOMOL Connector avec lequel ce client communique. Elle détient les identifiants, effectue les véritables appels aux fournisseurs et renvoie une enveloppe uniforme. Le SDK n'exécute **aucune** logique d'intégration localement ; il ne fait que construire la requête et analyser la réponse.
 - **Fournisseur / service** — une API tierce (`gmail`, `slack`, `github`, `notion`, …). C'est le préfixe `<service>` d'un identifiant d'action.
 - **Action** — une opération sur un fournisseur, identifiée par `"<service>.<action>"` (par ex. `gmail.search_threads`). Vous *appelez* les actions ; vous ne les définissez pas — elles vivent sur la passerelle.
-- **Connexion** — un identifiant stocké et déjà autorisé pour un fournisseur. Vous ne touchez jamais aux jetons ; vous nommez simplement la connexion à utiliser via `connectionName`. **OAuth et le cycle de vie des identifiants sont l'affaire de la passerelle, pas du SDK.**
+- **Connexion** — un identifiant stocké et déjà autorisé pour un fournisseur. Vous ne touchez jamais aux jetons ; vous nommez simplement la connexion à utiliser via `connectionName`. La passerelle possède le cycle de vie des identifiants : `connect` démarre une autorisation, mais les jetons, leur rafraîchissement et leur stockage restent côté serveur.
 - **Équipe** — cloisonnement optionnel par locataire.
 
 ## Ce que vous pouvez construire
@@ -66,6 +66,7 @@ Aucune architecture à apprendre — seulement cinq mots, car tout le gros du tr
 | Atteindre un endpoint pas encore modélisé en action | `proxy` | Relais vers l'API en amont, avec les identifiants de la connexion injectés par la passerelle. |
 | Fournir des actions à un LLM / construire des formulaires dynamiques | `catalog` | JSON Schema d'exécution (2020-12) pour n'importe quelle action ou fournisseur — `catalog.action` / `catalog.actions` / `catalog.providers`. |
 | Découvrir ce qui est connecté | `apps.list` | Liste en lecture seule des connexions que vous avez déjà établies. |
+| Connecter un compte à vous | `connect` | `connect.oauth` (asynchrone : URL d'autorisation puis interrogation), `connect.apiKey` / `connect.customCredential` (synchrones). Exige une clé dont l'utilisateur est `creator`/`admin` de l'équipe. Voir [Connecter votre propre compte](#connecter-votre-propre-compte). |
 | Laisser *vos* utilisateurs connecter *leurs* comptes | `ProjectConnector` | Un client distinct, à portée projet, pour connecter des comptes au nom de vos utilisateurs finaux et exécuter des actions pour eux. Voir [Connecter les comptes de vos utilisateurs](#connecter-les-comptes-de-vos-utilisateurs). |
 | Exécuter vous-même le serveur open source | `OpenConnector` | Les deux voies d'appel (`execute` et `open.<service>.<action>`) + `catalog` / `apps` / `health` sur votre runtime auto-hébergé. Voir [Runtime auto-hébergé](#runtime-auto-hébergé). |
 
@@ -161,6 +162,42 @@ const { status, data } = await oomol.proxy("github", {
   query: { state: "open" },
 });
 ```
+
+## Connecter votre propre compte
+
+Lier un compte se fait normalement depuis la console, mais les deux clients personnels savent aussi le faire par le code. Trois modes, deux formes de résultat :
+
+```ts
+// OAuth — ASYNCHRONOUS. Send the user to the URL, then poll.
+const started = await oomol.connect.oauth("gmail", { returnUri: "https://app.example.com/done" });
+console.log(started.authorizationUrl);
+
+const settled = await oomol.connect.waitForConnection(started);
+if (settled.status === "connected") console.log("connection id:", settled.appId);
+
+// API key / custom credential — SYNCHRONOUS. The credential is validated and stored in one call.
+const openai = await oomol.connect.apiKey("openai", { apiKey: process.env.OPENAI_API_KEY! });
+const jira = await oomol.connect.customCredential("jira", {
+  values: { site: "acme.atlassian.net", email: "me@acme.com", token: process.env.JIRA_TOKEN! },
+});
+```
+
+`waitForConnection` **se résout** sur tous les statuts terminaux : `connected`, `failed` (l'utilisateur a refusé, ou une tentative plus récente a supplanté celle-ci) et `expired` (il n'est jamais allé au bout). Elle ne lève une erreur que lorsque `maxWaitMs` est épuisé (le vôtre, ou la valeur par défaut de 10 minutes), avec le code `client_wait_timeout`. Un échec d'interrogation réessayable (429, 5xx, réseau) ne met pas fin à l'attente : il coûte une interrogation et est réessayé au tour suivant, dans cette même limite. Préférez `getAttempt(connectionRequestId)` si vous pilotez vous-même l'interrogation, ou pour reprendre après un redémarrage.
+
+| Méthode | Retourne | Notes |
+| --- | --- | --- |
+| `connect.oauth(service, input?)` | `{ authorizationUrl, stateHandle, connectionRequestId, status, expiresAt }` | Champs d'`input` : `returnUri`, `authorizationOptionIds`, `extra`, `secretExtra`, tous optionnels. Interrogez avec `connectionRequestId`, **pas** avec `stateHandle`. |
+| `connect.apiKey(service, { apiKey, extra?, comment? })` | la connexion prête | `apiKey` est la clé du **fournisseur en amont**, jamais votre clé OOMOL. |
+| `connect.customCredential(service, { values, comment? })` | la connexion prête | Les clés de `values` sont les champs d'identifiants déclarés par le fournisseur. |
+| `connect.getAttempt(id)` | une tentative OAuth | Lisible jusqu'à 24 h après `expiresAt` ; un id inconnu est rejeté avec `connection_request_not_found`. |
+| `connect.waitForConnection(startOrId, opts?)` | la tentative aboutie | `pollIntervalMs` (2 s), `maxWaitMs` (10 min, la fenêtre d'autorisation). |
+
+> [!IMPORTANT]
+> **Ce sont des opérations d'administration, et le niveau de droits exigé est plus élevé que pour exécuter des actions.** Sur la passerelle hébergée, l'utilisateur de la clé doit être `creator` ou `admin` de l'équipe concernée ; un simple membre est refusé par la couche de politique avec un 403 avant même que la requête n'atteigne le backend. Sur le runtime auto-hébergé, le niveau exigé dépend de votre configuration : un runtime sans aucune authentification les accepte sans jeton, mais dès que des jetons de runtime entrent en jeu, un jeton **admin** devient obligatoire. Sans lui le runtime répond 403 (`Configure an admin token to manage connections`), et lorsqu'il en a un, un jeton de runtime (`oct_…`) est rejeté avec un 401. Voir [Runtime auto-hébergé](#runtime-auto-hébergé).
+
+Deux choses que cette surface ne fait délibérément pas : **nommer** la connexion (les deux backends attribuent le nom eux-mêmes, renommez-la ensuite depuis la console) et **supprimer** ou ré-autoriser une connexion.
+
+Visite complète et exécutable — [`examples/connect.ts`](../../examples/connect.ts).
 
 ## Connecter les comptes de vos utilisateurs
 
@@ -267,8 +304,22 @@ const open = new OpenConnector({
 });
 ```
 
+`connect` fonctionne ici aussi, avec la même forme que sur le client hébergé, mais la gestion des connexions relève de la portée **admin** sur le runtime : elle réclame donc un second jeton :
+
+```ts
+const open = new OpenConnector({
+  runtimeToken: process.env.OOMOL_CONNECT_RUNTIME_TOKEN, // runs actions, reads the catalog
+  adminToken: process.env.OOMOL_CONNECT_ADMIN_TOKEN, // required by `connect.*` only
+});
+
+const started = await open.connect.oauth("gmail", { returnUri: "http://localhost:5173/done" });
+await open.connect.waitForConnection(started);
+```
+
+Le runtime rejette le jeton de runtime sur ces routes, aussi le SDK ne l'y envoie jamais : `connect.*` porte `adminToken`, tout le reste porte `runtimeToken`. Sans `adminToken`, `connect.*` part sans authentification, ce qui est exactement ce qu'il faut pour un runtime sans jeton admin configuré.
+
 > [!NOTE]
-> Les connexions, les identifiants et la configuration OAuth se gèrent dans la **console web** du runtime — il s'agit d'administration serveur, délibérément hors de ce SDK. Le client consomme ce que la console a configuré ; la sélection de connexion comporte deux couches (le `connectionName` par appel l'emporte sur la valeur par défaut au niveau du client — il n'y a ni portée `using()` ni `team`). Et comme sur le client hébergé, un identifiant de service qui entre en collision avec un nom de membre (`execute` / `executeRaw` / `health` / `proxy` / `catalog` / `apps`) continue de fonctionner via `execute("<service>.<action>", …)` — seul son sucre de namespace est masqué.
+> Le reste de l'administration des connexions, à savoir supprimer une connexion, configurer le client OAuth et émettre des jetons, demeure dans la **console web** du runtime, délibérément hors de ce SDK. La sélection de connexion comporte deux couches (le `connectionName` par appel l'emporte sur la valeur par défaut au niveau du client ; il n'y a ni portée `using()` ni `team`). Et comme sur le client hébergé, un identifiant de service qui entre en collision avec un nom de membre (`execute` / `executeRaw` / `health` / `proxy` / `catalog` / `apps` / `connect`) continue de fonctionner via `execute("<service>.<action>", …)` : seul son sucre de namespace est masqué.
 
 Visite guidée complète exécutable — [`examples/open.ts`](../../examples/open.ts).
 
@@ -284,9 +335,10 @@ Visite guidée complète exécutable — [`examples/open.ts`](../../examples/ope
 - **`oomol.proxy(service, { endpoint, method, query, headers, body })`** — relais vers une API de fournisseur en amont (à utiliser quand aucune action ne modélise encore l'endpoint).
 - **`oomol.catalog.action / .actions / .providers`** — JSON Schema d'exécution pour interfaces dynamiques, validation ou outils LLM.
 - **`oomol.apps.list()`** — introspection en lecture seule de vos applications connectées.
+- **`oomol.connect.oauth / .apiKey / .customCredential`** — liez un compte à vous, avec `getAttempt` / `waitForConnection` pour suivre une tentative OAuth jusqu'à son terme. Portée d'administration : exige une clé `creator`/`admin` de l'équipe (hébergé) ou le jeton admin (auto-hébergé). Voir [Connecter votre propre compte](#connecter-votre-propre-compte).
 - **`oomol.executeRaw(...)`** — comme `execute`, mais renvoie `{ data, executionId, actionId, message }`.
 - **`ProjectConnector`** — un client distinct (clé API de projet) pour bâtir une plateforme SaaS : `connect.oauth` / `connect.apiKey` / `connect.customCredential`, `waitForConnection`, `getUserProfile` pour lire l'identité de l'utilisateur côté fournisseur, `execute` / `executeRaw` au nom d'un utilisateur, et `forUser` pour cibler un seul utilisateur. Voir [Connecter les comptes de vos utilisateurs](#connecter-les-comptes-de-vos-utilisateurs).
-- **`OpenConnector`** — le client personnel pour le runtime open source auto-hébergé : les deux voies d'appel (`execute` et `open.<service>.<action>`), `catalog` / `apps` (+ `health`, `catalog.search` / `.services`, `apps.listByService` / `.authenticated`), authentifié par un jeton de runtime optionnel. Voir [Runtime auto-hébergé](#runtime-auto-hébergé).
+- **`OpenConnector`** — le client personnel pour le runtime open source auto-hébergé : les deux voies d'appel (`execute` et `open.<service>.<action>`), `catalog` / `apps` (+ `health`, `catalog.search` / `.services`, `apps.listByService` / `.authenticated`) et `connect`, authentifié par un jeton de runtime optionnel (`connect` exige en plus le jeton admin sur tout runtime qui applique une authentification). Voir [Runtime auto-hébergé](#runtime-auto-hébergé).
 
 Consultez [`examples/`](../../examples) pour un usage exécutable et vérifié par typage de chaque méthode.
 

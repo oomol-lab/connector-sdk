@@ -51,3 +51,17 @@ export async function precise() {
 
   return { snippet, threadId, looseVal, raw, login, inputSchema, providers };
 }
+
+export async function connecting() {
+  // Connection creation: OAuth is asynchronous (start → poll), the credential modes are not.
+  const started = await oomol.connect.oauth("gmail", { returnUri: "https://app.example.com/done" });
+  const authorizationUrl: string = started.authorizationUrl;
+  const settled = await oomol.connect.waitForConnection(started, { pollIntervalMs: 1000 });
+  const appId: string | null = settled.appId;
+
+  const byKey = await oomol.connect.apiKey("openai", { apiKey: "sk-x", comment: null });
+  const name: string | null = byKey.connectionName;
+  const byFields = await oomol.connect.customCredential("jira", { values: { token: "t" } });
+
+  return { authorizationUrl, appId, name, byFields };
+}

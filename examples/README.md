@@ -12,9 +12,10 @@ OOMOL_API_KEY=api_... bun run examples/basic.ts
 | [`basic.ts`](./basic.ts) | Quickstart: `execute` (path 1), `oomol.<service>.<action>` (path 2), `executeRaw` metadata |
 | [`feedback-to-notion.ts`](./feedback-to-notion.ts) | Scenario: a Web-standard `/feedback` route → `notion.append_block` appends each note to a Notion page |
 | [`catalog.ts`](./catalog.ts) | `catalog.providers` (incl. `{ service, q }` filter), `catalog.actions`, `catalog.action` (JSON Schema) |
+| [`connect.ts`](./connect.ts) | `connect.oauth` (authorization URL + `waitForConnection` / `getAttempt`), `connect.apiKey`, `connect.customCredential` — link an account of your own, on the hosted gateway **and** a self-hosted runtime (which needs `adminToken`) |
 | [`apps.ts`](./apps.ts) | `apps.list` (read-only); reading `id` / `service` / `status` / `connectionName` |
 | [`project.ts`](./project.ts) | `ProjectConnector` (separate client, project API key): `connect.{oauth,apiKey,customCredential}`, `waitForConnection`, `getUserProfile`, `execute`, `forUser` — connect accounts for your end-users and act on their behalf |
-| [`open.ts`](./open.ts) | `OpenConnector` (separate client, open-source self-hosted runtime): `execute` + `open.<service>.<action>` namespace sugar, `catalog` (incl. `search` / `services`), `apps`, `health` — the personal surface against your own server |
+| [`open.ts`](./open.ts) | `OpenConnector` (separate client, open-source self-hosted runtime): `execute` + `open.<service>.<action>` namespace sugar, `catalog` (incl. `search` / `services`), `apps`, `health`, `connect` (admin-scoped) — the personal surface against your own server |
 | [`proxy.ts`](./proxy.ts) | `proxy` passthrough — typed GET/POST, `endpoint` / `query` / `headers` / `body` |
 | [`scoping-and-options.ts`](./scoping-and-options.ts) | `new Connector({...})`, `using()`, per-call options, `AbortSignal`, timeout/retries, custom `fetch` |
 | [`error-handling.ts`](./error-handling.ts) | `ConnectorError` fields, `err.code` discrimination, `isRetryable`, client codes |
