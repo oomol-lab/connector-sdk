@@ -476,3 +476,47 @@ describe("ProjectConnector — headers", () => {
     }
   });
 });
+
+describe("ProjectConnector — proxy", () => {
+  const request = { endpoint: "/users/me/profile", method: "GET" as const, query: { fields: "emailAddress" } };
+
+  it("uses project authentication and serializes the account selector outside the provider request", async () => {
+    const output = { status: 200, headers: { "content-type": "application/json" }, data: { emailAddress: "user@example.com" } };
+    const { project, calls } = projectRecorder(() => ok(output, { executionId: "exec_1" }));
+    expect(await project.proxy("user_42", "gmail", request, {
+      providerConfigId: "pc_1", connectedAccountId: "ca_1", connectionName: "ignored",
+    })).toEqual(output);
+    expect(calls[0]!.url).toBe(`${BASE}/saas/proxy/gmail`);
+    expect(calls[0]!.method).toBe("POST");
+    expect(calls[0]!.headers.authorization).toBe("Bearer oo_proj_test");
+    expect(calls[0]!.body).toEqual({ userId: "user_42", providerConfigId: "pc_1", connectedAccountId: "ca_1", request });
+    expect(calls[0]!.headers["x-oomol-connector-alias"]).toBeUndefined();
+  });
+
+  it("binds users independently, maps connectionName and encodes the service path", async () => {
+    const { project, calls } = projectRecorder(() => ok({ status: 204, headers: {}, data: "" }));
+    await project.forUser("user_a").proxy("gmail/test", request, { connectionName: "work" });
+    await project.forUser("user_b").proxy("gmail", request);
+    expect(calls[0]!.url).toBe(`${BASE}/saas/proxy/gmail%2Ftest`);
+    expect(calls[0]!.body).toEqual({ userId: "user_a", alias: "work", request });
+    expect(calls[1]!.body).toEqual({ userId: "user_b", request });
+  });
+
+  it("returns upstream errors without retrying a successful Connector envelope", async () => {
+    const { project, calls } = projectRecorder(() => ok({ status: 429, headers: { "retry-after": "10" }, data: { error: "rate limited" } }));
+    const response = await project.proxy<{ error: string }>("user_42", "gmail", request);
+    expect(response.status).toBe(429);
+    expect(response.data.error).toBe("rate limited");
+    expect(calls).toHaveLength(1);
+  });
+
+  it("honors per-call retry and cancellation options", async () => {
+    const { project, calls } = projectRecorder(() => new Response("Unavailable", { status: 503 }));
+    await expect(project.forUser("user_42").proxy("gmail", request, { retries: 0 })).rejects.toBeInstanceOf(ConnectorError);
+    expect(calls).toHaveLength(1);
+    const controller = new AbortController();
+    controller.abort();
+    await expect(project.proxy("user_42", "gmail", request, { signal: controller.signal })).rejects.toMatchObject({ name: "AbortError" });
+    expect(calls).toHaveLength(1);
+  });
+});

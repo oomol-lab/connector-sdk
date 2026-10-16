@@ -253,6 +253,55 @@ const out = await project.execute(
 );
 ```
 
+### Appeler les API des fournisseurs avec SaaS Proxy
+
+Utilisez SaaS Proxy pour un endpoint qui ne dispose pas encore d’une action Connector. Votre backend fournit le chemin, la méthode et les paramètres ; Connector sélectionne le compte connecté de l’utilisateur et ajoute ses identifiants. Le fournisseur doit prendre en charge le proxy et les permissions du compte restent applicables.
+
+```ts
+import { ProjectConnector } from "@oomol-lab/connector";
+
+const project = new ProjectConnector({
+  apiKey: process.env.PROJECT_API_KEY!,
+});
+
+const result = await project.proxy<{ emailAddress: string }>(
+  "customer-1",
+  "gmail",
+  { endpoint: "/users/me/profile", method: "GET" },
+  {
+    providerConfigId: process.env.PROVIDER_CONFIG_ID!,
+    connectedAccountId: process.env.CONNECTED_ACCOUNT_ID!,
+    retries: 0,
+  },
+);
+
+if (result.status < 200 || result.status >= 300) {
+  throw new Error(`Provider returned HTTP ${result.status}`);
+}
+console.log(result.data.emailAddress);
+```
+
+Pour plusieurs appels du même utilisateur, liez-le une seule fois :
+
+```ts
+const user = project.forUser("customer-1");
+const profile = await user.proxy<{ emailAddress: string }>(
+  "gmail",
+  { endpoint: "/users/me/profile", method: "GET" },
+  {
+    providerConfigId: process.env.PROVIDER_CONFIG_ID!,
+    connectionName: "work",
+    retries: 0,
+  },
+);
+if (profile.status < 200 || profile.status >= 300) {
+  throw new Error(`Provider returned HTTP ${profile.status}`);
+}
+console.log(profile.data.emailAddress);
+```
+
+Vérifiez les deux niveaux. Une enveloppe Connector réussie peut contenir un statut fournisseur non 2xx dans data.status ; avec le SDK, vérifiez result.status et le corps du fournisseur. Les échecs Connector lèvent ConnectorError. Une Project API key invalide peut produire HTTP 401 avec le texte brut Unauthorized : ne supposez pas que toutes les erreurs sont en JSON.
+
 ### Restreindre à un seul utilisateur
 
 ```ts

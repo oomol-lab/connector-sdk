@@ -253,6 +253,55 @@ const out = await project.execute(
 );
 ```
 
+### Вызов API провайдеров через SaaS Proxy
+
+Используйте SaaS Proxy для endpoint, который ещё не представлен готовой операцией Connector. Ваш backend задаёт путь, метод и параметры, а Connector выбирает подключённый аккаунт пользователя и добавляет учётные данные. Провайдер должен поддерживать proxy; действуют существующие разрешения аккаунта.
+
+```ts
+import { ProjectConnector } from "@oomol-lab/connector";
+
+const project = new ProjectConnector({
+  apiKey: process.env.PROJECT_API_KEY!,
+});
+
+const result = await project.proxy<{ emailAddress: string }>(
+  "customer-1",
+  "gmail",
+  { endpoint: "/users/me/profile", method: "GET" },
+  {
+    providerConfigId: process.env.PROVIDER_CONFIG_ID!,
+    connectedAccountId: process.env.CONNECTED_ACCOUNT_ID!,
+    retries: 0,
+  },
+);
+
+if (result.status < 200 || result.status >= 300) {
+  throw new Error(`Provider returned HTTP ${result.status}`);
+}
+console.log(result.data.emailAddress);
+```
+
+Для нескольких вызовов одного пользователя можно привязать его один раз:
+
+```ts
+const user = project.forUser("customer-1");
+const profile = await user.proxy<{ emailAddress: string }>(
+  "gmail",
+  { endpoint: "/users/me/profile", method: "GET" },
+  {
+    providerConfigId: process.env.PROVIDER_CONFIG_ID!,
+    connectionName: "work",
+    retries: 0,
+  },
+);
+if (profile.status < 200 || profile.status >= 300) {
+  throw new Error(`Provider returned HTTP ${profile.status}`);
+}
+console.log(profile.data.emailAddress);
+```
+
+Проверяйте оба уровня. Успешный конверт Connector может содержать статус провайдера вне 2xx в data.status; в SDK проверяйте result.status и тело ответа провайдера. Ошибки Connector вызывают ConnectorError. Неверный Project API key может вернуть HTTP 401 с обычным текстом Unauthorized: не считайте все ошибки JSON-ответами.
+
 ### Ограничение областью одного пользователя
 
 ```ts

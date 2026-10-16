@@ -40,7 +40,9 @@ expectType<Promise<Record<string, any>>>(
 );
 
 // Separation: ProjectConnector exposes ONLY project-scoped operations — never the personal surface.
-expectError(project.proxy);
+expectType<Promise<import("@oomol-lab/connector").ProxyResponse<unknown>>>(
+  project.proxy("user_42", "gmail", { endpoint: "/users/me/profile", method: "GET" }),
+);
 expectError(project.catalog);
 expectError(project.apps);
 expectError(project.using);
