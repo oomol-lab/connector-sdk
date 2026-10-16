@@ -253,6 +253,24 @@ const out = await project.execute(
 );
 ```
 
+### Call a provider API through the project proxy
+
+```ts
+const profile = await project.proxy<{ emailAddress: string }>(
+  "user_42",
+  "gmail",
+  { endpoint: "/users/me/profile", method: "GET" },
+  { providerConfigId: "pc_1", connectedAccountId: "ca_1", retries: 0 },
+);
+if (profile.status >= 200 && profile.status < 300) {
+  console.log(profile.data.emailAddress);
+}
+```
+
+`project.forUser("user_42").proxy("gmail", request, options)` provides the same call with the user bound. Proxy uses the project's connected account and the provider's allowed endpoints and existing scopes. `connectedAccountId` takes precedence over `connectionName`; omit both only when latest-active account selection is intended.
+
+The return value is `{ status, headers, data }`, matching `Connector.proxy`. The upstream can return a non-2xx `status` inside a successful Connector response; inspect it explicitly. Connector failures throw `ConnectorError`. Set `retries: 0` for requests that must not be repeated automatically. Use the HTTP envelope's `meta.executionId` when you need execution metadata; this method returns only the proxy output.
+
 ### Scope to one user
 
 ```ts

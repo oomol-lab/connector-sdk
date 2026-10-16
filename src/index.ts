@@ -64,6 +64,7 @@ export type {
   ProjectConnectorConfig,
   ProjectCallOptions,
   ProjectExecuteOptions,
+  ProjectProxyOptions,
   ConnectionRequest,
   ConnectedAccount,
   ConnectionRequestStatus,

@@ -253,6 +253,55 @@ const out = await project.execute(
 );
 ```
 
+### 透過 SaaS Proxy 呼叫供應商 API
+
+需要呼叫尚未封裝為 Connector 操作的供應商介面時，可以使用 SaaS Proxy。後端指定介面位址、方法與參數，Connector 選擇終端使用者已連接的帳號並注入供應商憑證。供應商必須支援 proxy，呼叫仍受帳號既有權限限制。
+
+```ts
+import { ProjectConnector } from "@oomol-lab/connector";
+
+const project = new ProjectConnector({
+  apiKey: process.env.PROJECT_API_KEY!,
+});
+
+const result = await project.proxy<{ emailAddress: string }>(
+  "customer-1",
+  "gmail",
+  { endpoint: "/users/me/profile", method: "GET" },
+  {
+    providerConfigId: process.env.PROVIDER_CONFIG_ID!,
+    connectedAccountId: process.env.CONNECTED_ACCOUNT_ID!,
+    retries: 0,
+  },
+);
+
+if (result.status < 200 || result.status >= 300) {
+  throw new Error(`Provider returned HTTP ${result.status}`);
+}
+console.log(result.data.emailAddress);
+```
+
+同一使用者需要多次呼叫時，可以先綁定使用者：
+
+```ts
+const user = project.forUser("customer-1");
+const profile = await user.proxy<{ emailAddress: string }>(
+  "gmail",
+  { endpoint: "/users/me/profile", method: "GET" },
+  {
+    providerConfigId: process.env.PROVIDER_CONFIG_ID!,
+    connectionName: "work",
+    retries: 0,
+  },
+);
+if (profile.status < 200 || profile.status >= 300) {
+  throw new Error(`Provider returned HTTP ${profile.status}`);
+}
+console.log(profile.data.emailAddress);
+```
+
+需要檢查兩層結果。Connector 成功回傳時，data.status 仍可能是供應商的非 2xx 狀態碼；SDK 對應檢查 result.status，同時檢查供應商回應本文。Connector 本身的失敗會在 SDK 中擲出 ConnectorError。Project API key 無效時，HTTP 可能回傳 401 與純文字 Unauthorized，因此不要假定所有錯誤回應都是 JSON。
+
 ### 限定於單一使用者
 
 ```ts

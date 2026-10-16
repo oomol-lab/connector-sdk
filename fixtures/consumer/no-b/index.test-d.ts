@@ -1,7 +1,7 @@
 // State 1 — B NOT installed (ActionRegistry empty). Everything must be loose-callable.
 import { expectType, expectError, expectAssignable } from "tsd";
-import { Connector, OpenConnector } from "@oomol-lab/connector";
 import type { ConnectedApp, ConnectionAttempt, ConnectionAttemptStart } from "@oomol-lab/connector";
+import { Connector, OpenConnector, ProjectConnector, type ProxyResponse, type ProjectProxyOptions } from "@oomol-lab/connector";
 
 const oomol = new Connector({ apiKey: "k" });
 const open = new OpenConnector();
@@ -66,3 +66,13 @@ expectError(oomol.connect.oauth({ service: "gmail" }));
 // The self-hosted client takes the admin token connection management needs.
 new OpenConnector({ runtimeToken: "oct_x", adminToken: "adm_x" });
 expectError(new OpenConnector({ adminToken: 1 }));
+const project = new ProjectConnector({ apiKey: "oo_proj_test" });
+const proxyOptions: ProjectProxyOptions = { providerConfigId: "pc_1", connectedAccountId: "ca_1", retries: 0 };
+expectType<Promise<ProxyResponse<{ emailAddress: string }>>>(
+  project.proxy<{ emailAddress: string }>("user_42", "gmail", { endpoint: "/users/me/profile", method: "GET" }, proxyOptions),
+);
+expectType<Promise<ProxyResponse<unknown>>>(
+  project.forUser("user_42").proxy("gmail", { endpoint: "/users/me/profile", method: "GET" }),
+);
+expectError(project.proxy("user_42", "gmail", { endpoint: "/users/me/profile", method: "TRACE" }));
+expectError(project.proxy("user_42", "gmail", { endpoint: "/users/me/profile", method: "GET" }, { team: "team_1" }));

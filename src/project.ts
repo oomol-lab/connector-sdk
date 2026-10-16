@@ -6,7 +6,7 @@
  * (identified by an opaque `externalUserId`) links their own Gmail / Slack / GitHub / … account
  * through your app — the composio / pipedream "managed auth" model. It is a SEPARATE client,
  * constructed with a PROJECT API key (`oo_proj_…`), exposing ONLY project-scoped operations; it does
- * not carry the personal `execute` / namespace / proxy / catalog / apps surface.
+ * not carry the personal namespace / catalog / apps surface.
  *
  * Wire-name normalization (the SDK surface speaks ONE name): the gateway request body uses `userId`
  * and its responses use `externalUserId` for the same end-user id, and `alias` for a connection's
@@ -25,7 +25,7 @@ import {
   type Transport,
 } from "./http";
 import type { ActionId, InputOf, OutputOf } from "./registry";
-import type { RawResult } from "./types";
+import type { ProxyRequest, ProxyResponse, RawResult } from "./types";
 
 /**
  * Per-call options for project operations. Independent of the core `CallOptions`: a project client is
@@ -206,6 +206,9 @@ export interface ProjectExecuteOptions extends ProjectCallOptions {
   connectionName?: string;
 }
 
+/** Options for project proxy calls; the provider service is supplied as a method argument. */
+export type ProjectProxyOptions = Omit<ProjectExecuteOptions, "service">;
+
 /**
  * Tuning for `waitForConnection`. `maxWaitMs` is the total wall-clock cap — the one you usually
  * want. `timeoutMs` (inherited) is the advanced PER-POLL HTTP timeout, rarely tuned. `signal`
@@ -287,6 +290,13 @@ export interface ProjectApi {
     input: InputOf<A>,
     options?: ProjectExecuteOptions,
   ): Promise<RawResult<OutputOf<A>>>;
+  /** Call a provider API for an end-user. Inspect the returned upstream status, including non-2xx. */
+  proxy<T = unknown>(
+    externalUserId: string,
+    service: string,
+    request: ProxyRequest,
+    options?: ProjectProxyOptions,
+  ): Promise<ProxyResponse<T>>;
   /** Bind an end-user once and drop the repeated `externalUserId` from every call. */
   forUser(externalUserId: string): ProjectUser;
 }
@@ -314,6 +324,8 @@ export interface ProjectUser {
     input: InputOf<A>,
     options?: ProjectExecuteOptions,
   ): Promise<RawResult<OutputOf<A>>>;
+  /** See {@link ProjectApi.proxy}; the end-user is bound by `forUser`. */
+  proxy<T = unknown>(service: string, request: ProxyRequest, options?: ProjectProxyOptions): Promise<ProxyResponse<T>>;
 }
 
 /**
@@ -510,6 +522,27 @@ function createProjectApi(deps: ProjectTransport): ProjectApi {
     options?: ProjectExecuteOptions,
   ): Promise<OutputOf<A>> => (await executeRaw(externalUserId, actionId, input, options)).data;
 
+  const proxy = async <T = unknown>(
+    externalUserId: string,
+    service: string,
+    request: ProxyRequest,
+    options: ProjectProxyOptions = {},
+  ): Promise<ProxyResponse<T>> => {
+    const account = options.connectedAccountId !== undefined
+      ? { connectedAccountId: options.connectedAccountId }
+      : aliasField(options.connectionName);
+    const envelope = await deps.request("POST", `/saas/proxy/${encodeURIComponent(service)}`, {
+      body: {
+        userId: externalUserId,
+        ...(options.providerConfigId === undefined ? {} : { providerConfigId: options.providerConfigId }),
+        ...account,
+        request,
+      },
+      options,
+    });
+    return envelope.data as ProxyResponse<T>;
+  };
+
   const forUser = (externalUserId: string): ProjectUser => ({
     externalUserId,
     connect: {
@@ -520,13 +553,15 @@ function createProjectApi(deps: ProjectTransport): ProjectApi {
     getConnectionRequest,
     waitForConnection,
     getUserProfile,
+    proxy: <T = unknown>(service: string, request: ProxyRequest, options?: ProjectProxyOptions) =>
+      proxy<T>(externalUserId, service, request, options),
     execute: <A extends ActionId>(actionId: A, input: InputOf<A>, options?: ProjectExecuteOptions) =>
       execute(externalUserId, actionId, input, options),
     executeRaw: <A extends ActionId>(actionId: A, input: InputOf<A>, options?: ProjectExecuteOptions) =>
       executeRaw(externalUserId, actionId, input, options),
   });
 
-  return { connect, getConnectionRequest, waitForConnection, getUserProfile, execute, executeRaw, forUser };
+  return { connect, getConnectionRequest, waitForConnection, getUserProfile, execute, executeRaw, proxy, forUser };
 }
 
 declare const __PKG_VERSION__: string;
