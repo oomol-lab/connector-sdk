@@ -321,7 +321,7 @@ app.post("/oomol/webhooks", async (req, res) => {
 });
 ```
 
-`verifyWebhook` returns a boolean instead of throwing. Pass several secrets to accept both the new and the previous one while you deploy a rotation. Verification uses Web Crypto, so it runs on Node 19+, Bun, Deno, and edge runtimes.
+`verifyWebhook` returns a boolean instead of throwing. Pass several secrets to accept both the new and the previous one while you deploy a rotation. Verification uses Web Crypto, so it runs on Node 20+, Bun, Deno, and edge runtimes.
 
 `project.execute` reuses the same [`@oomol-lab/connector-types`](https://github.com/oomol-lab/connector-types) registry as the core path — registered actions get precise input/output, the rest stay loosely callable.
 

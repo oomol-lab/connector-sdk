@@ -352,7 +352,7 @@ app.post("/oomol/webhooks", async (req, res) => {
 });
 ```
 
-`verifyWebhook` は例外を投げずに真偽値を返します。シークレットのローテーション中は新旧両方を渡せます。検証には Web Crypto を使うため、Node 19+、Bun、Deno、エッジランタイムで動作します。
+`verifyWebhook` は例外を投げずに真偽値を返します。シークレットのローテーション中は新旧両方を渡せます。検証には Web Crypto を使うため、Node 20+、Bun、Deno、エッジランタイムで動作します。
 
 `project.execute` はコアパスと同じ [`@oomol-lab/connector-types`](https://github.com/oomol-lab/connector-types) レジストリを再利用します — 登録済みのアクションは正確な入出力を得られ、それ以外は緩く呼び出し可能なままです。
 

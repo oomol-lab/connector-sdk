@@ -352,7 +352,7 @@ app.post("/oomol/webhooks", async (req, res) => {
 });
 ```
 
-`verifyWebhook` 回傳布林值而不拋錯。部署金鑰輪替期間，可以同時傳入新舊兩個金鑰。驗證基於 Web Crypto，可在 Node 19+、Bun、Deno 與邊緣執行環境中使用。
+`verifyWebhook` 回傳布林值而不拋錯。部署金鑰輪替期間，可以同時傳入新舊兩個金鑰。驗證基於 Web Crypto，可在 Node 20+、Bun、Deno 與邊緣執行環境中使用。
 
 `project.execute` 重用與核心路徑相同的 [`@oomol-lab/connector-types`](https://github.com/oomol-lab/connector-types) 註冊表——已註冊的 action 會得到精確的輸入／輸出，其餘的則保持寬鬆可呼叫。
 

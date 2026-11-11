@@ -4,7 +4,7 @@
  * Connector signs every delivery with HMAC-SHA256 over `<t>.<raw body>`, keyed with the webhook's
  * signing secret, and sends `x-oo-signature: t=<unix seconds>,v1=<hex>`. During a secret rotation the
  * header carries one `v1` per active secret; a delivery is valid when ANY of them matches. Uses the
- * Web Crypto API, so it runs unchanged on Node 19+, Bun, Deno, and edge runtimes.
+ * Web Crypto API, so it runs unchanged on Node 20+, Bun, Deno, and edge runtimes.
  */
 
 import { ConnectorError } from "./errors";
@@ -201,7 +201,7 @@ function requireSubtleCrypto(): SubtleCrypto {
   const subtle = globalThis.crypto?.subtle;
   if (!subtle) {
     throw new ConnectorError(
-      "Web Crypto is unavailable; webhook verification needs globalThis.crypto.subtle (Node 19+, Bun, Deno, or an edge runtime)",
+      "Web Crypto is unavailable; webhook verification needs globalThis.crypto.subtle (Node 20+, Bun, Deno, or an edge runtime)",
       { code: "client_invalid_request", status: 0 },
     );
   }

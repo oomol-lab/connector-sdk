@@ -352,7 +352,7 @@ app.post("/oomol/webhooks", async (req, res) => {
 });
 ```
 
-`verifyWebhook` renvoie un booléen au lieu de lever une erreur. Pendant le déploiement d’une rotation, passez l’ancien et le nouveau secret. La vérification utilise Web Crypto et fonctionne sur Node 19+, Bun, Deno et les runtimes edge.
+`verifyWebhook` renvoie un booléen au lieu de lever une erreur. Pendant le déploiement d’une rotation, passez l’ancien et le nouveau secret. La vérification utilise Web Crypto et fonctionne sur Node 20+, Bun, Deno et les runtimes edge.
 
 `project.execute` réutilise le même registre [`@oomol-lab/connector-types`](https://github.com/oomol-lab/connector-types) que la voie principale — les actions enregistrées obtiennent des entrées/sorties précises, les autres restent appelables de façon souple.
 

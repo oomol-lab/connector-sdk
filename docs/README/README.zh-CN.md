@@ -352,7 +352,7 @@ app.post("/oomol/webhooks", async (req, res) => {
 });
 ```
 
-`verifyWebhook` 返回布尔值而不抛错。部署密钥轮换期间,可以同时传入新旧两个密钥。校验基于 Web Crypto,可在 Node 19+、Bun、Deno 和边缘运行时中使用。
+`verifyWebhook` 返回布尔值而不抛错。部署密钥轮换期间,可以同时传入新旧两个密钥。校验基于 Web Crypto,可在 Node 20+、Bun、Deno 和边缘运行时中使用。
 
 `project.execute` 复用与核心路径相同的 [`@oomol-lab/connector-types`](https://github.com/oomol-lab/connector-types) 注册表——已注册的 action 获得精确的输入/输出,其余的保持宽松可调用。
 

@@ -95,6 +95,28 @@ describe("ProjectConnector — triggers", () => {
     expect(calls[0]!.body).toEqual({ userId: "user_42", connectedAccountId: "ca_1", triggerId: "gmail.on_message_received" });
   });
 
+  it("subscribe fails before sending when no Idempotency-Key can be generated", async () => {
+    const { project, calls } = projectRecorder(() => ok(subscriptionPayload(), undefined, 201));
+    const original = Object.getOwnPropertyDescriptor(globalThis.crypto, "randomUUID");
+    Object.defineProperty(globalThis.crypto, "randomUUID", { value: undefined, configurable: true });
+    try {
+      await expect(
+        project.triggers.subscribe("user_42", { connectedAccountId: "ca_1", triggerId: "gmail.on_message_received" }),
+      ).rejects.toMatchObject({ code: "client_invalid_request" });
+      expect(calls).toHaveLength(0);
+      // A caller-supplied key needs no generator.
+      await project.triggers.subscribe(
+        "user_42",
+        { connectedAccountId: "ca_1", triggerId: "gmail.on_message_received" },
+        { idempotencyKey: "fixed" },
+      );
+      expect(calls[0]!.headers["idempotency-key"]).toBe("fixed");
+    } finally {
+      if (original) Object.defineProperty(globalThis.crypto, "randomUUID", original);
+      else delete (globalThis.crypto as { randomUUID?: unknown }).randomUUID;
+    }
+  });
+
   it("listSubscriptions maps filters to the query and reads total and billing from meta", async () => {
     const { project, calls } = projectRecorder(() =>
       ok([subscriptionPayload()], { total: 1, limit: 50, offset: 0, billing }),

@@ -6,6 +6,7 @@
  * rest of the project surface; every other field is passed through unchanged.
  */
 
+import { ConnectorError } from "./errors";
 import type { ProjectCallOptions, ProjectRequest } from "./project";
 
 /** How a Trigger receives upstream events. Open union for forward compatibility. */
@@ -198,8 +199,18 @@ function subscriptionPath(subscriptionId: string) {
   return `/saas/trigger-subscriptions/${encodeURIComponent(subscriptionId)}`;
 }
 
-function generatedIdempotencyKey(): string | undefined {
-  return globalThis.crypto?.randomUUID?.();
+/**
+ * A fresh key for one `subscribe` call. Never send the POST without a key: retries would then be able
+ * to create duplicate subscriptions, so a runtime without `crypto.randomUUID` fails before sending.
+ */
+function generatedIdempotencyKey(): string {
+  if (typeof globalThis.crypto?.randomUUID !== "function") {
+    throw new ConnectorError(
+      "crypto.randomUUID is unavailable; pass `idempotencyKey` to subscribe, or use Node 20+, Bun, Deno, or an edge runtime",
+      { code: "client_invalid_request", status: 0 },
+    );
+  }
+  return globalThis.crypto.randomUUID();
 }
 
 export function createProjectTriggersApi(request: ProjectRequest): ProjectTriggersApi {
@@ -223,7 +234,7 @@ export function createProjectTriggersApi(request: ProjectRequest): ProjectTrigge
           ...(input.config === undefined ? {} : { config: input.config }),
           ...(input.intervalSeconds === undefined ? {} : { intervalSeconds: input.intervalSeconds }),
         },
-        headers: idempotencyKey === undefined ? undefined : { "idempotency-key": idempotencyKey },
+        headers: { "idempotency-key": idempotencyKey },
         options: callOptions,
       });
       return toSubscription<TriggerSubscription>(envelope.data);
