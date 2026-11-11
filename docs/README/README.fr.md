@@ -231,6 +231,15 @@ const account = await project.connect.apiKey("user_42", { service: "openai", api
 await project.connect.customCredential("user_42", { service: "jira", values: { email, token } });
 ```
 
+### Router les événements d’une connexion vers son propre webhook
+
+Passez l’ID d’un webhook créé avec le scope `routed` pour livrer tous les événements de cette connexion (événements de connexion et événements Trigger) uniquement à ce webhook, par exemple vers un récepteur de préproduction pour un compte de test. Omettez `webhookId` lors d’une reconnexion pour conserver le routage actuel.
+
+```ts
+// Compte de débogage : ses événements vont uniquement au webhook routé, pas aux webhooks du projet.
+await project.connect.oauth("user_42", { service: "gmail", connectionName: "debug", webhookId: "<routed-webhook-id>" });
+```
+
 ### Sous quel compte se sont-ils connectés ?
 
 ```ts

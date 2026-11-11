@@ -231,6 +231,15 @@ const account = await project.connect.apiKey("user_42", { service: "openai", api
 await project.connect.customCredential("user_42", { service: "jira", values: { email, token } });
 ```
 
+### 接続のイベントを専用 Webhook にルーティングする
+
+scope が `routed` の Webhook ID を渡すと、その接続のすべてのイベント（接続イベントと Trigger イベント）がその Webhook にだけ配信されます。たとえばテスト用アカウントのイベントをステージング環境の受信先に送れます。再接続時に `webhookId` を省略すると、現在のルーティングが維持されます。
+
+```ts
+// デバッグ用アカウント：イベントはルーティング先の Webhook にだけ届き、プロジェクトの Webhook には届きません。
+await project.connect.oauth("user_42", { service: "gmail", connectionName: "debug", webhookId: "<routed-webhook-id>" });
+```
+
 ### どのアカウントで接続したか
 
 ```ts

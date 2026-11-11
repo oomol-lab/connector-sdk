@@ -231,6 +231,15 @@ const account = await project.connect.apiKey("user_42", { service: "openai", api
 await project.connect.customCredential("user_42", { service: "jira", values: { email, token } });
 ```
 
+### Маршрутизация событий подключения в отдельный webhook
+
+Передайте ID webhook со scope `routed`, чтобы все события этого подключения (события подключения и события Trigger) доставлялись только в него, например в тестовый приёмник для отладочного аккаунта. Если при повторном подключении не передать `webhookId`, текущая маршрутизация сохранится.
+
+```ts
+// Отладочный аккаунт: события уходят только в маршрутизированный webhook, а не в webhook проекта.
+await project.connect.oauth("user_42", { service: "gmail", connectionName: "debug", webhookId: "<routed-webhook-id>" });
+```
+
 ### Под каким аккаунтом они подключились?
 
 ```ts

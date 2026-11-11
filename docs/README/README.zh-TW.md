@@ -231,6 +231,15 @@ const account = await project.connect.apiKey("user_42", { service: "openai", api
 await project.connect.customCredential("user_42", { service: "jira", values: { email, token } });
 ```
 
+### 將單一連線的事件路由到專用 Webhook
+
+傳入 scope 為 `routed` 的 Webhook ID，這個連線的所有事件（連線事件和 Trigger 事件）都只投遞到該 Webhook，例如把測試帳號的事件送到預發環境。重新連線時省略 `webhookId` 會保留目前的路由。
+
+```ts
+// 除錯帳號：事件只送往路由 Webhook，不會送往專案層級 Webhook。
+await project.connect.oauth("user_42", { service: "gmail", connectionName: "debug", webhookId: "<routed-webhook-id>" });
+```
+
 ### 使用者連接的是哪個第三方帳號
 
 ```ts

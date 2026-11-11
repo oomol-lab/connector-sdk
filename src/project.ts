@@ -76,6 +76,8 @@ export interface ConnectionRequest {
   authorizationUrl: string;
   /** The resulting connected-account id once the request reaches `connected`, else `null`. */
   connectedAccountId: string | null;
+  /** The routed webhook requested for this connection, or `null` when none was requested. */
+  webhookId: string | null;
   /** Connector error code when `status` is `failed`, else `null`. */
   errorCode: string | null;
   errorMessage: string | null;
@@ -105,6 +107,11 @@ export interface ConnectedAccount {
   status: ConnectedAccountStatus;
   /** Whether this account can currently execute actions (active + ready credential). */
   available: boolean;
+  /**
+   * The routed webhook that receives every event for this account, or `null` when the account's
+   * events go to the project's `project`-scoped webhooks.
+   */
+  webhookId: string | null;
   service: string | null;
   providerAccountId: string | null;
   accountLabel: string | null;
@@ -161,8 +168,18 @@ export type ProviderSelector =
   | { providerConfigId: string; service?: never }
   | { service: string; providerConfigId?: never };
 
+/** Routing fields shared by every `connect.*` input. */
+interface WebhookRoutingInput {
+  /**
+   * ID of a project webhook with scope `routed`. When set, every event for this connection (connection
+   * events and Trigger events) is delivered only to that webhook instead of the project-scoped webhooks.
+   * Omit it on a reconnect to keep the account's current routing.
+   */
+  webhookId?: string;
+}
+
 /** Input for `connect.oauth`. */
-export type OAuthConnectInput = ProviderSelector & {
+export type OAuthConnectInput = ProviderSelector & WebhookRoutingInput & {
   /** Name to assign the connection; pass it back later as `execute`'s `connectionName`. Auto-generated if omitted. */
   connectionName?: string;
   /** Optional URL the gateway returns the user to after the OAuth callback completes. */
@@ -170,7 +187,7 @@ export type OAuthConnectInput = ProviderSelector & {
 };
 
 /** Input for `connect.apiKey`. */
-export type ApiKeyConnectInput = ProviderSelector & {
+export type ApiKeyConnectInput = ProviderSelector & WebhookRoutingInput & {
   /** The END-USER's upstream provider API key (e.g. an `sk-…`). NEVER the gateway `oo_proj_` auth key. */
   apiKey: string;
   /** Name to assign the connection; pass it back later as `execute`'s `connectionName`. Auto-generated if omitted. */
@@ -180,7 +197,7 @@ export type ApiKeyConnectInput = ProviderSelector & {
 };
 
 /** Input for `connect.customCredential`. */
-export type CustomCredentialConnectInput = ProviderSelector & {
+export type CustomCredentialConnectInput = ProviderSelector & WebhookRoutingInput & {
   /** Provider credential field values, validated by the gateway against the provider config. */
   values: Record<string, string>;
   /** Name to assign the connection; pass it back later as `execute`'s `connectionName`. Auto-generated if omitted. */
@@ -379,6 +396,11 @@ function providerKeys(sel: { providerConfigId?: string; service?: string }): Rec
     : { service: sel.service as string };
 }
 
+/** Emit `webhookId` only when provided: omitting it keeps the account's current routing on a reconnect. */
+function webhookField(webhookId: string | undefined): Record<string, string> {
+  return webhookId === undefined ? {} : { webhookId };
+}
+
 /** Emit the wire `alias` field only when a connectionName was provided (so the gateway can default it). */
 function aliasField(connectionName: string | undefined): Record<string, string> {
   return connectionName === undefined ? {} : { alias: connectionName };
@@ -392,6 +414,7 @@ function createProjectApi(deps: ProjectTransport): ProjectApi {
         userId: externalUserId,
         ...providerKeys(input),
         ...aliasField(input.connectionName),
+        ...webhookField(input.webhookId),
         ...(input.returnUri === undefined ? {} : { returnUri: input.returnUri }),
       };
       const envelope = await deps.request("POST", "/saas/connected-accounts/link", { body, options });
@@ -402,6 +425,7 @@ function createProjectApi(deps: ProjectTransport): ProjectApi {
         userId: externalUserId,
         ...providerKeys(input),
         ...aliasField(input.connectionName),
+        ...webhookField(input.webhookId),
         apiKey: input.apiKey,
         ...(input.extra === undefined ? {} : { extra: input.extra }),
       };
@@ -413,6 +437,7 @@ function createProjectApi(deps: ProjectTransport): ProjectApi {
         userId: externalUserId,
         ...providerKeys(input),
         ...aliasField(input.connectionName),
+        ...webhookField(input.webhookId),
         values: input.values,
       };
       const envelope = await deps.request("POST", "/saas/connected-accounts/custom-credential", { body, options });
