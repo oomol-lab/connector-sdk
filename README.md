@@ -288,6 +288,41 @@ await user.connect.oauth({ service: "gmail" });
 await user.execute("gmail.search_threads", { query: "from:ceo" });
 ```
 
+### Subscribe to provider events with Triggers
+
+```ts
+// Watch the user's Google Sheet; new rows arrive at your project webhook as `trigger.message`.
+const subscription = await project.triggers.subscribe("user_42", {
+  connectedAccountId: account.connectedAccountId,
+  triggerId: "googlesheets.on_row_added",
+  config: { spreadsheetId: "<spreadsheet-id>", sheet: "Orders" },
+});
+
+await project.triggers.updateSubscription(subscription.id, { status: "paused" });
+const { data, billing } = await project.triggers.listSubscriptions({ externalUserId: "user_42" });
+```
+
+Read a Trigger's `configSchema` with `project.triggers.getType(triggerId)` first. `subscribe` sends an `Idempotency-Key` and reuses it on retries, so a retry never creates a second subscription; pass `idempotencyKey` to dedupe across restarts too. The project needs an active webhook that receives `trigger.message`, otherwise `subscribe` rejects with `trigger_delivery_unavailable`.
+
+### Verify webhook deliveries
+
+```ts
+import { parseWebhookEvent, WEBHOOK_SIGNATURE_HEADER } from "@oomol-lab/connector";
+
+app.post("/oomol/webhooks", async (req, res) => {
+  const event = await parseWebhookEvent({
+    payload: req.rawBody, // the raw body, before any JSON parsing
+    signature: req.headers[WEBHOOK_SIGNATURE_HEADER],
+    secret: process.env.OOMOL_WEBHOOK_SECRET!,
+  }); // throws ConnectorError `client_invalid_signature` on a bad signature
+  if (await alreadyHandled(event.id)) return res.sendStatus(200); // `id` is stable across retries
+  if (event.type === "trigger.message") await handleRow(event.data.externalUserId, event.data.payload);
+  res.sendStatus(200);
+});
+```
+
+`verifyWebhook` returns a boolean instead of throwing. Pass several secrets to accept both the new and the previous one while you deploy a rotation. Verification uses Web Crypto, so it runs on Node 19+, Bun, Deno, and edge runtimes.
+
 `project.execute` reuses the same [`@oomol-lab/connector-types`](https://github.com/oomol-lab/connector-types) registry as the core path — registered actions get precise input/output, the rest stay loosely callable.
 
 > [!NOTE]
@@ -364,7 +399,8 @@ Full runnable tour — [`examples/open.ts`](./examples/open.ts).
 - **`oomol.apps.list()`** — read-only introspection of your connected apps.
 - **`oomol.connect.oauth / .apiKey / .customCredential`** — link an account of your own, plus `getAttempt` / `waitForConnection` to follow an OAuth attempt to completion. Management-scoped: needs a team `creator`/`admin` key (hosted) or the admin token (self-hosted). See [Connect your own account](#connect-your-own-account).
 - **`oomol.executeRaw(...)`** — like `execute`, but returns `{ data, executionId, actionId, message }`.
-- **`ProjectConnector`** — a separate client (project API key) to build a SaaS platform: `connect.oauth` / `connect.apiKey` / `connect.customCredential`, `waitForConnection`, `getUserProfile` to read who the user is on the provider, `execute` / `executeRaw` on a user's behalf, and `forUser` to scope to one user. See [Connect accounts for your users](#connect-accounts-for-your-users).
+- **`ProjectConnector`** — a separate client (project API key) to build a SaaS platform: `connect.oauth` / `connect.apiKey` / `connect.customCredential`, `waitForConnection`, `triggers` to subscribe users' accounts to provider events, `getUserProfile` to read who the user is on the provider, `execute` / `executeRaw` on a user's behalf, and `forUser` to scope to one user. See [Connect accounts for your users](#connect-accounts-for-your-users).
+- **`verifyWebhook` / `parseWebhookEvent`** — verify a project webhook's `x-oo-signature` and parse its connection or Trigger event. See [Verify webhook deliveries](#verify-webhook-deliveries).
 - **`OpenConnector`** — the personal client for the open-source self-hosted runtime: both call paths (`execute` and `open.<service>.<action>`), `catalog` / `apps` (+ `health`, `catalog.search` / `.services`, `apps.listByService` / `.authenticated`), and `connect`, authenticated by an optional runtime token (`connect` additionally requires the admin token on any runtime that enforces authentication). See [Self-hosted runtime](#self-hosted-runtime).
 
 See [`examples/`](./examples) for runnable, type-checked usage of every method.

@@ -319,6 +319,41 @@ await user.connect.oauth({ service: "gmail" });
 await user.execute("gmail.search_threads", { query: "from:ceo" });
 ```
 
+### Trigger でプロバイダーのイベントを購読する
+
+```ts
+// ユーザーの Google Sheet を監視し、新しい行を `trigger.message` としてプロジェクトの Webhook に届けます。
+const subscription = await project.triggers.subscribe("user_42", {
+  connectedAccountId: account.connectedAccountId,
+  triggerId: "googlesheets.on_row_added",
+  config: { spreadsheetId: "<spreadsheet-id>", sheet: "Orders" },
+});
+
+await project.triggers.updateSubscription(subscription.id, { status: "paused" });
+const { data, billing } = await project.triggers.listSubscriptions({ externalUserId: "user_42" });
+```
+
+まず `project.triggers.getType(triggerId)` で Trigger の `configSchema` を確認します。`subscribe` は `Idempotency-Key` を送信し、リトライでも同じキーを使うため、リトライで購読が重複することはありません。`idempotencyKey` を渡すとプロセス再起動をまたいだ重複も防げます。`trigger.message` を受け取る active な Webhook がプロジェクトにない場合、`subscribe` は `trigger_delivery_unavailable` で失敗します。
+
+### Webhook の配信を検証する
+
+```ts
+import { parseWebhookEvent, WEBHOOK_SIGNATURE_HEADER } from "@oomol-lab/connector";
+
+app.post("/oomol/webhooks", async (req, res) => {
+  const event = await parseWebhookEvent({
+    payload: req.rawBody, // JSON をパースする前の生のリクエストボディ
+    signature: req.headers[WEBHOOK_SIGNATURE_HEADER],
+    secret: process.env.OOMOL_WEBHOOK_SECRET!,
+  }); // 署名が一致しない場合は ConnectorError `client_invalid_signature` を投げます
+  if (await alreadyHandled(event.id)) return res.sendStatus(200); // `id` はリトライ間で変わりません
+  if (event.type === "trigger.message") await handleRow(event.data.externalUserId, event.data.payload);
+  res.sendStatus(200);
+});
+```
+
+`verifyWebhook` は例外を投げずに真偽値を返します。シークレットのローテーション中は新旧両方を渡せます。検証には Web Crypto を使うため、Node 19+、Bun、Deno、エッジランタイムで動作します。
+
 `project.execute` はコアパスと同じ [`@oomol-lab/connector-types`](https://github.com/oomol-lab/connector-types) レジストリを再利用します — 登録済みのアクションは正確な入出力を得られ、それ以外は緩く呼び出し可能なままです。
 
 > [!NOTE]
@@ -395,7 +430,8 @@ await open.connect.waitForConnection(started);
 - **`oomol.apps.list()`** — 接続済みアプリの読み取り専用イントロスペクション。
 - **`oomol.connect.oauth / .apiKey / .customCredential`** — 自分のアカウントを接続し、`getAttempt` / `waitForConnection` で OAuth の試行を完了まで追跡します。管理スコープです: ホスト型ではチームの `creator`/`admin` キー、セルフホストでは admin トークンが必要です。[自分のアカウントを接続する](#自分のアカウントを接続する)を参照。
 - **`oomol.executeRaw(...)`** — `execute` と同様ですが、`{ data, executionId, actionId, message }` を返します。
-- **`ProjectConnector`** — SaaS プラットフォームを構築するための別クライアント（プロジェクト API キー）: `connect.oauth` / `connect.apiKey` / `connect.customCredential`、`waitForConnection`、プロバイダー側のユーザー情報を読む `getUserProfile`、ユーザーの代わりに実行する `execute` / `executeRaw`、そして1人のユーザーにスコープする `forUser`。[ユーザーのアカウントを接続する](#ユーザーのアカウントを接続する)を参照。
+- **`ProjectConnector`** — SaaS プラットフォームを構築するための別クライアント（プロジェクト API キー）: `connect.oauth` / `connect.apiKey` / `connect.customCredential`、`waitForConnection`、ユーザーのアカウントでプロバイダーのイベントを購読する `triggers`、プロバイダー側のユーザー情報を読む `getUserProfile`、ユーザーの代わりに実行する `execute` / `executeRaw`、そして1人のユーザーにスコープする `forUser`。[ユーザーのアカウントを接続する](#ユーザーのアカウントを接続する)を参照。
+- **`verifyWebhook` / `parseWebhookEvent`** — プロジェクト Webhook の `x-oo-signature` を検証し、接続イベントまたは Trigger イベントをパースします。[Webhook の配信を検証する](#webhook-の配信を検証する)を参照。
 - **`OpenConnector`** — オープンソースのセルフホストランタイム向けの個人用クライアント: 両方の呼び出しパス（`execute` と `open.<service>.<action>`）、`catalog` / `apps`（＋ `health`、`catalog.search` / `.services`、`apps.listByService` / `.authenticated`）、そして `connect`。任意のランタイムトークンで認証されます（認証を有効にしているランタイムでは `connect` に別途 admin トークンが必要）。[セルフホストランタイム](#セルフホストランタイム)を参照。
 
 すべてのメソッドの実行可能で型チェック済みの使用例は [`examples/`](../../examples) を参照してください。

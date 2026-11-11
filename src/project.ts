@@ -24,6 +24,8 @@ import {
   type RequestSpec,
   type Transport,
 } from "./http";
+import type { ProjectTriggersApi, ProjectUserTriggersApi } from "./project-triggers";
+import { bindProjectUserTriggers, createProjectTriggersApi } from "./project-triggers";
 import type { ActionId, InputOf, OutputOf } from "./registry";
 import type { ProxyRequest, ProxyResponse, RawResult } from "./types";
 
@@ -268,6 +270,8 @@ interface ProjectUserConnectApi {
 /** The project-scoped surface — the shape of a {@link ProjectConnector} instance. */
 export interface ProjectApi {
   readonly connect: ProjectConnectApi;
+  /** Trigger catalog and subscriptions; events arrive at project webhooks as `trigger.message`. */
+  readonly triggers: ProjectTriggersApi;
   /**
    * Read a connection request by the `id` returned from a `connect.*` call (`data.id`). This is the
    * OAuth flow's status handle — pair it with `waitForConnection` to poll an OAuth link to completion.
@@ -324,6 +328,8 @@ export interface ProjectUser {
   readonly externalUserId: string;
   /** Connect an account for this user — see {@link ProjectApi.connect}. */
   readonly connect: ProjectUserConnectApi;
+  /** Subscribe this user's accounts to Triggers — see {@link ProjectApi.triggers}. */
+  readonly triggers: ProjectUserTriggersApi;
   /** See {@link ProjectApi.getConnectionRequest}. */
   getConnectionRequest(connectionRequestId: string, options?: ProjectCallOptions): Promise<ConnectionRequest>;
   /** See {@link ProjectApi.waitForConnection}. */
@@ -350,12 +356,24 @@ export interface ProjectUser {
  * + sends a project request (project-key auth) and returns the parsed envelope; `sleep` paces
  * `waitForConnection` (injectable so tests need not actually wait).
  */
+export interface ProjectRequestInit {
+  body?: unknown;
+  options?: ProjectCallOptions;
+  actionId?: string;
+  /** Query parameters; `undefined` values are dropped. */
+  query?: Record<string, string | number | undefined>;
+  /** Extra request headers (e.g. `idempotency-key`). */
+  headers?: Record<string, string>;
+}
+
+export type ProjectRequest = (
+  method: "GET" | "POST" | "PATCH" | "DELETE",
+  path: string,
+  init: ProjectRequestInit,
+) => Promise<Envelope>;
+
 interface ProjectTransport {
-  request(
-    method: "GET" | "POST",
-    path: string,
-    init: { body?: unknown; options?: ProjectCallOptions; actionId?: string },
-  ): Promise<Envelope>;
+  request: ProjectRequest;
   sleep(ms: number, signal?: AbortSignal): Promise<void>;
   /** The client's resolved default per-request timeout (ms); used to clamp each waitForConnection poll. */
   defaultTimeoutMs: number;
@@ -568,8 +586,11 @@ function createProjectApi(deps: ProjectTransport): ProjectApi {
     return envelope.data as ProxyResponse<T>;
   };
 
+  const triggers = createProjectTriggersApi(deps.request);
+
   const forUser = (externalUserId: string): ProjectUser => ({
     externalUserId,
+    triggers: bindProjectUserTriggers(triggers, externalUserId),
     connect: {
       oauth: (input, options) => connect.oauth(externalUserId, input, options),
       apiKey: (input, options) => connect.apiKey(externalUserId, input, options),
@@ -586,7 +607,17 @@ function createProjectApi(deps: ProjectTransport): ProjectApi {
       executeRaw(externalUserId, actionId, input, options),
   });
 
-  return { connect, getConnectionRequest, waitForConnection, getUserProfile, execute, executeRaw, proxy, forUser };
+  return {
+    connect,
+    triggers,
+    getConnectionRequest,
+    waitForConnection,
+    getUserProfile,
+    execute,
+    executeRaw,
+    proxy,
+    forUser,
+  };
 }
 
 declare const __PKG_VERSION__: string;
@@ -619,11 +650,12 @@ interface ResolvedProjectConfig {
 /** Assemble one project request: project-key auth + standard headers (NO team / connector-alias). */
 function buildProjectSpec(
   cfg: ResolvedProjectConfig,
-  method: "GET" | "POST",
+  method: "GET" | "POST" | "PATCH" | "DELETE",
   path: string,
-  init: { body?: unknown; options?: ProjectCallOptions; actionId?: string },
+  init: ProjectRequestInit,
 ): RequestSpec {
   const headers: Record<string, string> = {
+    ...init.headers,
     authorization: `Bearer ${cfg.apiKey}`,
     "user-agent": USER_AGENT,
     accept: "application/json",
@@ -633,7 +665,7 @@ function buildProjectSpec(
   const options = init.options;
   return {
     method,
-    url: cfg.baseUrl + path,
+    url: cfg.baseUrl + path + queryString(init.query),
     headers,
     body: init.body,
     retries: options?.retries ?? cfg.maxRetries,
@@ -641,6 +673,14 @@ function buildProjectSpec(
     signal: options?.signal,
     actionId: init.actionId,
   };
+}
+
+function queryString(query: ProjectRequestInit["query"]): string {
+  if (!query) return "";
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) if (value !== undefined) params.set(key, String(value));
+  const encoded = params.toString();
+  return encoded ? `?${encoded}` : "";
 }
 
 // The constructor RETURNS the project surface (factory idiom, mirroring `Connector`), so the class

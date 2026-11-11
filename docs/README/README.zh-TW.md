@@ -319,6 +319,41 @@ await user.connect.oauth({ service: "gmail" });
 await user.execute("gmail.search_threads", { query: "from:ceo" });
 ```
 
+### 用 Trigger 訂閱第三方事件
+
+```ts
+// 監聽使用者的 Google Sheet；新列會以 `trigger.message` 投遞到你的專案 Webhook。
+const subscription = await project.triggers.subscribe("user_42", {
+  connectedAccountId: account.connectedAccountId,
+  triggerId: "googlesheets.on_row_added",
+  config: { spreadsheetId: "<spreadsheet-id>", sheet: "Orders" },
+});
+
+await project.triggers.updateSubscription(subscription.id, { status: "paused" });
+const { data, billing } = await project.triggers.listSubscriptions({ externalUserId: "user_42" });
+```
+
+先用 `project.triggers.getType(triggerId)` 讀取 Trigger 的 `configSchema`。`subscribe` 會送出 `Idempotency-Key`，並在重試時重複使用，重試不會建立第二個訂閱；傳入 `idempotencyKey` 還能跨行程重啟去重。專案需要一個接收 `trigger.message` 的 active Webhook，否則 `subscribe` 會以 `trigger_delivery_unavailable` 拒絕。
+
+### 驗證 Webhook 投遞
+
+```ts
+import { parseWebhookEvent, WEBHOOK_SIGNATURE_HEADER } from "@oomol-lab/connector";
+
+app.post("/oomol/webhooks", async (req, res) => {
+  const event = await parseWebhookEvent({
+    payload: req.rawBody, // 原始請求本文，JSON 解析之前
+    signature: req.headers[WEBHOOK_SIGNATURE_HEADER],
+    secret: process.env.OOMOL_WEBHOOK_SECRET!,
+  }); // 簽章不符時拋出 ConnectorError `client_invalid_signature`
+  if (await alreadyHandled(event.id)) return res.sendStatus(200); // `id` 在重試間保持不變
+  if (event.type === "trigger.message") await handleRow(event.data.externalUserId, event.data.payload);
+  res.sendStatus(200);
+});
+```
+
+`verifyWebhook` 回傳布林值而不拋錯。部署金鑰輪替期間，可以同時傳入新舊兩個金鑰。驗證基於 Web Crypto，可在 Node 19+、Bun、Deno 與邊緣執行環境中使用。
+
 `project.execute` 重用與核心路徑相同的 [`@oomol-lab/connector-types`](https://github.com/oomol-lab/connector-types) 註冊表——已註冊的 action 會得到精確的輸入／輸出，其餘的則保持寬鬆可呼叫。
 
 > [!NOTE]
@@ -395,7 +430,8 @@ await open.connect.waitForConnection(started);
 - **`oomol.apps.list()`** — 對你已連接的應用進行唯讀檢視。
 - **`oomol.connect.oauth / .apiKey / .customCredential`** — 連接你自己的帳號，並用 `getAttempt` / `waitForConnection` 跟進一次 OAuth 嘗試直到完成。屬於管理範圍:託管端需要團隊 `creator`/`admin` 金鑰，自架端需要 admin token。參見[連接你自己的帳號](#連接你自己的帳號)。
 - **`oomol.executeRaw(...)`** — 與 `execute` 類似，但會回傳 `{ data, executionId, actionId, message }`。
-- **`ProjectConnector`** — 一個獨立的用戶端（project API 金鑰），用來打造 SaaS 平台：`connect.oauth` / `connect.apiKey` / `connect.customCredential`、`waitForConnection`、用來讀取使用者在第三方平台身分的 `getUserProfile`、代表使用者的 `execute` / `executeRaw`，以及用來限定於單一使用者的 `forUser`。參見[為你的使用者連接帳號](#為你的使用者連接帳號)。
+- **`ProjectConnector`** — 一個獨立的用戶端（project API 金鑰），用來打造 SaaS 平台：`connect.oauth` / `connect.apiKey` / `connect.customCredential`、`waitForConnection`、用來訂閱使用者帳號第三方事件的 `triggers`、用來讀取使用者在第三方平台身分的 `getUserProfile`、代表使用者的 `execute` / `executeRaw`，以及用來限定於單一使用者的 `forUser`。參見[為你的使用者連接帳號](#為你的使用者連接帳號)。
+- **`verifyWebhook` / `parseWebhookEvent`** — 驗證專案 Webhook 的 `x-oo-signature`，並解析連線事件或 Trigger 事件。見[驗證 Webhook 投遞](#驗證-webhook-投遞)。
 - **`OpenConnector`** — 供開源自架執行環境使用的個人用戶端：兩種呼叫路徑（`execute` 與 `open.<service>.<action>`）、`catalog` / `apps`（外加 `health`、`catalog.search` / `.services`、`apps.listByService` / `.authenticated`）以及 `connect`，以選用的執行環境 token 驗證(在任何啟用認證的執行環境上，`connect` 另需 admin token)。參見[自架執行環境](#自架執行環境)。
 
 每個方法的可執行、經型別檢查的用法，請見 [`examples/`](../../examples)。

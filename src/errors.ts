@@ -38,6 +38,12 @@ export type ConnectorErrorCode =
   | "subscription_exists"
   | "subscription_cleaning_up"
   | "subscription_needs_recreate"
+  | "trigger_not_found"
+  | "trigger_subscription_not_found"
+  | "trigger_delivery_unavailable"
+  | "trigger_subscription_reset_required"
+  | "insufficient_credit"
+  | "balance_unavailable"
   // Self-hosted runtime codes (the open-source backend an `OpenConnector` talks to):
   | "unauthorized"
   | "not_found"
@@ -57,6 +63,7 @@ export type ConnectorErrorCode =
   | "client_timeout" // request exceeded the client-side `timeoutMs`
   | "client_network_error" // transport-level failure (DNS/connection/fetch threw)
   | "client_wait_timeout" // a `waitForConnection` exceeded its overall `maxWaitMs` (NOT a per-request timeout)
+  | "client_invalid_signature" // a webhook delivery failed signature verification (`parseWebhookEvent`)
   // Forward-compat for new backend codes:
   | (string & {});
 
@@ -114,7 +121,12 @@ export function isRetryable(err: unknown): boolean {
   // Client-side terminal conditions: a local precheck never sent, and a `waitForConnection`
   // wall-clock cap. Both carry status 0 but must NOT fall through to the status-0 retry heuristic
   // below — retrying neither helps (the request was invalid / the user never finished authorizing).
-  if (err.code === "client_invalid_request" || err.code === "client_wait_timeout") return false;
+  if (
+    err.code === "client_invalid_request" ||
+    err.code === "client_wait_timeout" ||
+    err.code === "client_invalid_signature"
+  )
+    return false;
   if (RETRYABLE_CODES.has(err.code)) return true;
   if (err.status === 429) return true;
   if (err.status >= 500 && err.status <= 599) return true;

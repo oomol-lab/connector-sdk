@@ -319,6 +319,41 @@ await user.connect.oauth({ service: "gmail" });
 await user.execute("gmail.search_threads", { query: "from:ceo" });
 ```
 
+### S’abonner aux événements des fournisseurs avec les Triggers
+
+```ts
+// Surveille la Google Sheet de l’utilisateur ; les nouvelles lignes arrivent sur votre webhook de projet en `trigger.message`.
+const subscription = await project.triggers.subscribe("user_42", {
+  connectedAccountId: account.connectedAccountId,
+  triggerId: "googlesheets.on_row_added",
+  config: { spreadsheetId: "<spreadsheet-id>", sheet: "Orders" },
+});
+
+await project.triggers.updateSubscription(subscription.id, { status: "paused" });
+const { data, billing } = await project.triggers.listSubscriptions({ externalUserId: "user_42" });
+```
+
+Lisez d’abord le `configSchema` du Trigger avec `project.triggers.getType(triggerId)`. `subscribe` envoie un `Idempotency-Key` et le réutilise lors des nouvelles tentatives : une nouvelle tentative ne crée jamais un second abonnement. Passez `idempotencyKey` pour dédupliquer aussi entre redémarrages. Le projet doit avoir un webhook actif qui reçoit `trigger.message`, sinon `subscribe` échoue avec `trigger_delivery_unavailable`.
+
+### Vérifier les livraisons de webhook
+
+```ts
+import { parseWebhookEvent, WEBHOOK_SIGNATURE_HEADER } from "@oomol-lab/connector";
+
+app.post("/oomol/webhooks", async (req, res) => {
+  const event = await parseWebhookEvent({
+    payload: req.rawBody, // le corps brut, avant tout parsing JSON
+    signature: req.headers[WEBHOOK_SIGNATURE_HEADER],
+    secret: process.env.OOMOL_WEBHOOK_SECRET!,
+  }); // lève ConnectorError `client_invalid_signature` si la signature est invalide
+  if (await alreadyHandled(event.id)) return res.sendStatus(200); // `id` reste identique entre les tentatives
+  if (event.type === "trigger.message") await handleRow(event.data.externalUserId, event.data.payload);
+  res.sendStatus(200);
+});
+```
+
+`verifyWebhook` renvoie un booléen au lieu de lever une erreur. Pendant le déploiement d’une rotation, passez l’ancien et le nouveau secret. La vérification utilise Web Crypto et fonctionne sur Node 19+, Bun, Deno et les runtimes edge.
+
 `project.execute` réutilise le même registre [`@oomol-lab/connector-types`](https://github.com/oomol-lab/connector-types) que la voie principale — les actions enregistrées obtiennent des entrées/sorties précises, les autres restent appelables de façon souple.
 
 > [!NOTE]
@@ -395,7 +430,8 @@ Visite guidée complète exécutable — [`examples/open.ts`](../../examples/ope
 - **`oomol.apps.list()`** — introspection en lecture seule de vos applications connectées.
 - **`oomol.connect.oauth / .apiKey / .customCredential`** — liez un compte à vous, avec `getAttempt` / `waitForConnection` pour suivre une tentative OAuth jusqu'à son terme. Portée d'administration : exige une clé `creator`/`admin` de l'équipe (hébergé) ou le jeton admin (auto-hébergé). Voir [Connecter votre propre compte](#connecter-votre-propre-compte).
 - **`oomol.executeRaw(...)`** — comme `execute`, mais renvoie `{ data, executionId, actionId, message }`.
-- **`ProjectConnector`** — un client distinct (clé API de projet) pour bâtir une plateforme SaaS : `connect.oauth` / `connect.apiKey` / `connect.customCredential`, `waitForConnection`, `getUserProfile` pour lire l'identité de l'utilisateur côté fournisseur, `execute` / `executeRaw` au nom d'un utilisateur, et `forUser` pour cibler un seul utilisateur. Voir [Connecter les comptes de vos utilisateurs](#connecter-les-comptes-de-vos-utilisateurs).
+- **`ProjectConnector`** — un client distinct (clé API de projet) pour bâtir une plateforme SaaS : `connect.oauth` / `connect.apiKey` / `connect.customCredential`, `waitForConnection`, `triggers` pour abonner les comptes des utilisateurs aux événements des fournisseurs, `getUserProfile` pour lire l'identité de l'utilisateur côté fournisseur, `execute` / `executeRaw` au nom d'un utilisateur, et `forUser` pour cibler un seul utilisateur. Voir [Connecter les comptes de vos utilisateurs](#connecter-les-comptes-de-vos-utilisateurs).
+- **`verifyWebhook` / `parseWebhookEvent`** — vérifie le `x-oo-signature` d’un webhook de projet et analyse son événement de connexion ou de Trigger. Voir [Vérifier les livraisons de webhook](#vérifier-les-livraisons-de-webhook).
 - **`OpenConnector`** — le client personnel pour le runtime open source auto-hébergé : les deux voies d'appel (`execute` et `open.<service>.<action>`), `catalog` / `apps` (+ `health`, `catalog.search` / `.services`, `apps.listByService` / `.authenticated`) et `connect`, authentifié par un jeton de runtime optionnel (`connect` exige en plus le jeton admin sur tout runtime qui applique une authentification). Voir [Runtime auto-hébergé](#runtime-auto-hébergé).
 
 Consultez [`examples/`](../../examples) pour un usage exécutable et vérifié par typage de chaque méthode.

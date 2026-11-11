@@ -319,6 +319,41 @@ await user.connect.oauth({ service: "gmail" });
 await user.execute("gmail.search_threads", { query: "from:ceo" });
 ```
 
+### Подписка на события провайдеров через Triggers
+
+```ts
+// Следим за Google Sheet пользователя; новые строки приходят в webhook проекта как `trigger.message`.
+const subscription = await project.triggers.subscribe("user_42", {
+  connectedAccountId: account.connectedAccountId,
+  triggerId: "googlesheets.on_row_added",
+  config: { spreadsheetId: "<spreadsheet-id>", sheet: "Orders" },
+});
+
+await project.triggers.updateSubscription(subscription.id, { status: "paused" });
+const { data, billing } = await project.triggers.listSubscriptions({ externalUserId: "user_42" });
+```
+
+Сначала прочитайте `configSchema` Trigger через `project.triggers.getType(triggerId)`. `subscribe` отправляет `Idempotency-Key` и повторно использует его при ретраях, поэтому ретрай не создаст вторую подписку; передайте `idempotencyKey`, чтобы исключить дубли и между перезапусками. В проекте должен быть активный webhook, принимающий `trigger.message`, иначе `subscribe` завершится ошибкой `trigger_delivery_unavailable`.
+
+### Проверка доставок webhook
+
+```ts
+import { parseWebhookEvent, WEBHOOK_SIGNATURE_HEADER } from "@oomol-lab/connector";
+
+app.post("/oomol/webhooks", async (req, res) => {
+  const event = await parseWebhookEvent({
+    payload: req.rawBody, // сырое тело запроса, до разбора JSON
+    signature: req.headers[WEBHOOK_SIGNATURE_HEADER],
+    secret: process.env.OOMOL_WEBHOOK_SECRET!,
+  }); // бросает ConnectorError `client_invalid_signature` при неверной подписи
+  if (await alreadyHandled(event.id)) return res.sendStatus(200); // `id` не меняется между ретраями
+  if (event.type === "trigger.message") await handleRow(event.data.externalUserId, event.data.payload);
+  res.sendStatus(200);
+});
+```
+
+`verifyWebhook` возвращает boolean вместо исключения. На время ротации секрета можно передать и новый, и старый секрет. Проверка использует Web Crypto и работает в Node 19+, Bun, Deno и edge-средах.
+
 `project.execute` использует тот же реестр [`@oomol-lab/connector-types`](https://github.com/oomol-lab/connector-types), что и основной путь — зарегистрированные действия получают точные входные/выходные данные, остальные остаются свободно вызываемыми.
 
 > [!NOTE]
@@ -395,7 +430,8 @@ await open.connect.waitForConnection(started);
 - **`oomol.apps.list()`** — интроспекция только для чтения ваших подключённых приложений.
 - **`oomol.connect.oauth / .apiKey / .customCredential`** — подключите собственный аккаунт, а `getAttempt` / `waitForConnection` доведут попытку OAuth до завершения. Управляющая область: нужен ключ с ролью `creator`/`admin` в команде (размещённый шлюз) либо admin-токен (самостоятельное размещение). См. [Подключение вашего собственного аккаунта](#подключение-вашего-собственного-аккаунта).
 - **`oomol.executeRaw(...)`** — как `execute`, но возвращает `{ data, executionId, actionId, message }`.
-- **`ProjectConnector`** — отдельный клиент (ключ API проекта) для построения SaaS-платформы: `connect.oauth` / `connect.apiKey` / `connect.customCredential`, `waitForConnection`, `getUserProfile` для чтения личности пользователя на стороне провайдера, `execute` / `executeRaw` от имени пользователя и `forUser` для ограничения областью одного пользователя. См. [Подключение аккаунтов для ваших пользователей](#подключение-аккаунтов-для-ваших-пользователей).
+- **`ProjectConnector`** — отдельный клиент (ключ API проекта) для построения SaaS-платформы: `connect.oauth` / `connect.apiKey` / `connect.customCredential`, `waitForConnection`, `triggers` для подписки аккаунтов пользователей на события провайдеров, `getUserProfile` для чтения личности пользователя на стороне провайдера, `execute` / `executeRaw` от имени пользователя и `forUser` для ограничения областью одного пользователя. См. [Подключение аккаунтов для ваших пользователей](#подключение-аккаунтов-для-ваших-пользователей).
+- **`verifyWebhook` / `parseWebhookEvent`** — проверяет `x-oo-signature` webhook проекта и разбирает событие подключения или Trigger. См. [Проверка доставок webhook](#проверка-доставок-webhook).
 - **`OpenConnector`** — персональный клиент для самостоятельно размещаемой среды выполнения с открытым исходным кодом: оба пути вызова (`execute` и `open.<service>.<action>`), `catalog` / `apps` (+ `health`, `catalog.search` / `.services`, `apps.listByService` / `.authenticated`) и `connect`, с аутентификацией по необязательному токену среды выполнения (для `connect` дополнительно нужен admin-токен на любой среде, где аутентификация включена). См. [Самостоятельно размещаемая среда выполнения](#самостоятельно-размещаемая-среда-выполнения).
 
 Смотрите [`examples/`](../../examples) для запускаемых, проверенных типами примеров использования каждого метода.
