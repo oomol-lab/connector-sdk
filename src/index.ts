@@ -78,6 +78,37 @@ export type {
   CustomCredentialConnectInput,
   WaitForConnectionOptions,
 } from "./project";
+export type {
+  ProjectTriggersApi,
+  ProjectUserTriggersApi,
+  TriggerType,
+  TriggerTransport,
+  TriggerSubscription,
+  TriggerSubscriptionSummary,
+  TriggerSubscriptionPage,
+  TriggerSubscriptionStatus,
+  TriggerPauseReason,
+  TriggerBilling,
+  SubscribeTriggerInput,
+  SubscribeTriggerOptions,
+  ListTriggerSubscriptionsQuery,
+  UpdateTriggerSubscriptionInput,
+  ListTriggerTypesOptions,
+} from "./project-triggers";
+
+// Project webhooks: verify `x-oo-signature` and parse connection / Trigger events.
+export { verifyWebhook, parseWebhookEvent, WEBHOOK_SIGNATURE_HEADER } from "./webhooks";
+export type {
+  VerifyWebhookInput,
+  WebhookEvent,
+  WebhookEventType,
+  ConnectionSucceededWebhookEvent,
+  ConnectionFailedWebhookEvent,
+  TriggerMessageWebhookEvent,
+  ConnectionWebhookEventData,
+  TriggerMessageWebhookEventData,
+  WebhookConnectionAccount,
+} from "./webhooks";
 
 // OpenConnector — the personal client for the open-source, self-hosted runtime (the server YOU
 // run). Mirrors the core `Connector` action surface: execute, catalog, apps — nothing else; the

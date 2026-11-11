@@ -231,6 +231,15 @@ const account = await project.connect.apiKey("user_42", { service: "openai", api
 await project.connect.customCredential("user_42", { service: "jira", values: { email, token } });
 ```
 
+### 把单个连接的事件路由到专用 Webhook
+
+传入 scope 为 `routed` 的 Webhook ID，这个连接的所有事件（连接事件和 Trigger 事件）都只投递到该 Webhook，例如把测试账号的事件发到预发环境。重新连接时省略 `webhookId` 会保留当前路由。
+
+```ts
+// 调试账号：事件只发往路由 Webhook，不会发往项目级 Webhook。
+await project.connect.oauth("user_42", { service: "gmail", connectionName: "debug", webhookId: "<routed-webhook-id>" });
+```
+
 ### 用户连接的是哪个第三方账户
 
 ```ts
@@ -310,6 +319,41 @@ await user.connect.oauth({ service: "gmail" });
 await user.execute("gmail.search_threads", { query: "from:ceo" });
 ```
 
+### 用 Trigger 订阅第三方事件
+
+```ts
+// 监听用户的 Google Sheet;新行会以 `trigger.message` 投递到你的项目 Webhook。
+const subscription = await project.triggers.subscribe("user_42", {
+  connectedAccountId: account.connectedAccountId,
+  triggerId: "googlesheets.on_row_added",
+  config: { spreadsheetId: "<spreadsheet-id>", sheet: "Orders" },
+});
+
+await project.triggers.updateSubscription(subscription.id, { status: "paused" });
+const { data, billing } = await project.triggers.listSubscriptions({ externalUserId: "user_42" });
+```
+
+先用 `project.triggers.getType(triggerId)` 读取 Trigger 的 `configSchema`。`subscribe` 会发送 `Idempotency-Key`,并在重试时复用,重试不会创建第二个订阅;传入 `idempotencyKey` 还能跨进程重启去重。项目需要一个接收 `trigger.message` 的 active Webhook,否则 `subscribe` 会以 `trigger_delivery_unavailable` 拒绝。
+
+### 校验 Webhook 投递
+
+```ts
+import { parseWebhookEvent, WEBHOOK_SIGNATURE_HEADER } from "@oomol-lab/connector";
+
+app.post("/oomol/webhooks", async (req, res) => {
+  const event = await parseWebhookEvent({
+    payload: req.rawBody, // 原始请求体,JSON 解析之前
+    signature: req.headers[WEBHOOK_SIGNATURE_HEADER],
+    secret: process.env.OOMOL_WEBHOOK_SECRET!,
+  }); // 签名不符时抛出 ConnectorError `client_invalid_signature`
+  if (await alreadyHandled(event.id)) return res.sendStatus(200); // `id` 在重试间保持不变
+  if (event.type === "trigger.message") await handleRow(event.data.externalUserId, event.data.payload);
+  res.sendStatus(200);
+});
+```
+
+`verifyWebhook` 返回布尔值而不抛错。部署密钥轮换期间,可以同时传入新旧两个密钥。校验基于 Web Crypto,可在 Node 20+、Bun、Deno 和边缘运行时中使用。
+
 `project.execute` 复用与核心路径相同的 [`@oomol-lab/connector-types`](https://github.com/oomol-lab/connector-types) 注册表——已注册的 action 获得精确的输入/输出,其余的保持宽松可调用。
 
 > [!NOTE]
@@ -386,7 +430,8 @@ await open.connect.waitForConnection(started);
 - **`oomol.apps.list()`** — 对你已连接应用的只读检视。
 - **`oomol.connect.oauth / .apiKey / .customCredential`** — 连接你自己的账户,并用 `getAttempt` / `waitForConnection` 跟进一次 OAuth 尝试直到完成。属于管理作用域:托管端需要团队 `creator`/`admin` 密钥,自托管端需要 admin 令牌。参见[连接你自己的账户](#连接你自己的账户)。
 - **`oomol.executeRaw(...)`** — 与 `execute` 类似,但返回 `{ data, executionId, actionId, message }`。
-- **`ProjectConnector`** — 一个独立的客户端(项目 API 密钥),用于构建 SaaS 平台:`connect.oauth` / `connect.apiKey` / `connect.customCredential`、`waitForConnection`、用于读取用户在第三方平台身份的 `getUserProfile`、代表用户的 `execute` / `executeRaw`,以及用于限定到单个用户的 `forUser`。参见[为你的用户连接账户](#为你的用户连接账户)。
+- **`ProjectConnector`** — 一个独立的客户端(项目 API 密钥),用于构建 SaaS 平台:`connect.oauth` / `connect.apiKey` / `connect.customCredential`、`waitForConnection`、用于订阅用户账号第三方事件的 `triggers`、用于读取用户在第三方平台身份的 `getUserProfile`、代表用户的 `execute` / `executeRaw`,以及用于限定到单个用户的 `forUser`。参见[为你的用户连接账户](#为你的用户连接账户)。
+- **`verifyWebhook` / `parseWebhookEvent`** — 校验项目 Webhook 的 `x-oo-signature`,并解析连接事件或 Trigger 事件。见[校验 Webhook 投递](#校验-webhook-投递)。
 - **`OpenConnector`** — 面向开源自托管运行时的个人客户端:两种调用路径(`execute` 与 `open.<service>.<action>`)、`catalog` / `apps`(外加 `health`、`catalog.search` / `.services`、`apps.listByService` / `.authenticated`)以及 `connect`,由一个可选的运行时令牌进行认证(在任何启用了认证的运行时上,`connect` 另需 admin 令牌)。参见[自托管运行时](#自托管运行时)。
 
 每个方法的可运行、经过类型检查的用法见 [`examples/`](../../examples)。

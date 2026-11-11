@@ -15,6 +15,8 @@ OOMOL_API_KEY=api_... bun run examples/basic.ts
 | [`connect.ts`](./connect.ts) | `connect.oauth` (authorization URL + `waitForConnection` / `getAttempt`), `connect.apiKey`, `connect.customCredential` — link an account of your own, on the hosted gateway **and** a self-hosted runtime (which needs `adminToken`) |
 | [`apps.ts`](./apps.ts) | `apps.list` (read-only); reading `id` / `service` / `status` / `connectionName` |
 | [`project.ts`](./project.ts) | `ProjectConnector` (separate client, project API key): `connect.{oauth,apiKey,customCredential}`, `waitForConnection`, `getUserProfile`, `execute`, `forUser` — connect accounts for your end-users and act on their behalf |
+| [`triggers.ts`](./triggers.ts) | `ProjectConnector.triggers`: `listTypes`, `getType`, `subscribe` (with `idempotencyKey`), `updateSubscription` (pause / resume / interval), `listSubscriptions`, `deleteSubscription`, and `forUser(...).triggers` |
+| [`webhooks.ts`](./webhooks.ts) | `parseWebhookEvent` in a Web-standard `Request` handler: verify `x-oo-signature`, dedupe by `id`, switch on `connection.*` / `trigger.message` |
 | [`open.ts`](./open.ts) | `OpenConnector` (separate client, open-source self-hosted runtime): `execute` + `open.<service>.<action>` namespace sugar, `catalog` (incl. `search` / `services`), `apps`, `health`, `connect` (admin-scoped) — the personal surface against your own server |
 | [`proxy.ts`](./proxy.ts) | `proxy` passthrough — typed GET/POST, `endpoint` / `query` / `headers` / `body` |
 | [`scoping-and-options.ts`](./scoping-and-options.ts) | `new Connector({...})`, `using()`, per-call options, `AbortSignal`, timeout/retries, custom `fetch` |

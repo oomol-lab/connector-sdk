@@ -16,6 +16,7 @@ function requestPayload(overrides: Record<string, unknown> = {}) {
     alias: "work",
     authorizationUrl: "https://accounts.google.com/o/oauth2/v2/auth?state=cr_1",
     connectedAccountId: null,
+    webhookId: null,
     errorCode: null,
     errorMessage: null,
     expiresAt: "2026-06-25T00:10:00.000Z",
@@ -37,6 +38,7 @@ function accountPayload(overrides: Record<string, unknown> = {}) {
     appId: "app_1",
     status: "active",
     available: true,
+    webhookId: null,
     service: "openai",
     providerAccountId: "acct_x",
     accountLabel: "OpenAI (work)",
@@ -97,6 +99,31 @@ describe("ProjectConnector — connect", () => {
 
     expect(calls[0]!.body).toEqual({ userId: "user_42", providerConfigId: "pc_9" });
     expect(req.connectionName).toBeNull();
+  });
+
+  it("connect.* sends `webhookId` only when provided and surfaces it on responses", async () => {
+    const { project, calls } = projectRecorder((call) =>
+      ok(
+        call.url.endsWith("/link")
+          ? requestPayload({ webhookId: "whk_debug" })
+          : accountPayload({ webhookId: "whk_debug" }),
+      ),
+    );
+    const req = await project.connect.oauth("user_42", { service: "gmail", webhookId: "whk_debug" });
+    const acct = await project.connect.apiKey("user_42", { service: "openai", apiKey: "sk", webhookId: "whk_debug" });
+    await project.connect.customCredential("user_42", { service: "jira", values: { token: "t" }, webhookId: "whk_debug" });
+    // Omitting webhookId keeps the account's current routing, so it must not be sent at all.
+    await project.connect.apiKey("user_42", { service: "openai", apiKey: "sk", connectionName: "work" });
+
+    expect(calls.map((call) => (call.body as Record<string, unknown>).webhookId)).toEqual([
+      "whk_debug",
+      "whk_debug",
+      "whk_debug",
+      undefined,
+    ]);
+    expect("webhookId" in (calls[3]!.body as Record<string, unknown>)).toBe(false);
+    expect(req.webhookId).toBe("whk_debug");
+    expect(acct.webhookId).toBe("whk_debug");
   });
 
   it("connect.apiKey POSTs the api-key endpoint with apiKey + extra and returns a ConnectedAccount", async () => {

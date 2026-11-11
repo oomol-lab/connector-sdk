@@ -24,6 +24,8 @@ import {
   type RequestSpec,
   type Transport,
 } from "./http";
+import type { ProjectTriggersApi, ProjectUserTriggersApi } from "./project-triggers";
+import { bindProjectUserTriggers, createProjectTriggersApi } from "./project-triggers";
 import type { ActionId, InputOf, OutputOf } from "./registry";
 import type { ProxyRequest, ProxyResponse, RawResult } from "./types";
 
@@ -76,6 +78,8 @@ export interface ConnectionRequest {
   authorizationUrl: string;
   /** The resulting connected-account id once the request reaches `connected`, else `null`. */
   connectedAccountId: string | null;
+  /** The routed webhook requested for this connection, or `null` when none was requested. */
+  webhookId: string | null;
   /** Connector error code when `status` is `failed`, else `null`. */
   errorCode: string | null;
   errorMessage: string | null;
@@ -105,6 +109,11 @@ export interface ConnectedAccount {
   status: ConnectedAccountStatus;
   /** Whether this account can currently execute actions (active + ready credential). */
   available: boolean;
+  /**
+   * The routed webhook that receives every event for this account, or `null` when the account's
+   * events go to the project's `project`-scoped webhooks.
+   */
+  webhookId: string | null;
   service: string | null;
   providerAccountId: string | null;
   accountLabel: string | null;
@@ -161,8 +170,18 @@ export type ProviderSelector =
   | { providerConfigId: string; service?: never }
   | { service: string; providerConfigId?: never };
 
+/** Routing fields shared by every `connect.*` input. */
+interface WebhookRoutingInput {
+  /**
+   * ID of a project webhook with scope `routed`. When set, every event for this connection (connection
+   * events and Trigger events) is delivered only to that webhook instead of the project-scoped webhooks.
+   * Omit it on a reconnect to keep the account's current routing.
+   */
+  webhookId?: string;
+}
+
 /** Input for `connect.oauth`. */
-export type OAuthConnectInput = ProviderSelector & {
+export type OAuthConnectInput = ProviderSelector & WebhookRoutingInput & {
   /** Name to assign the connection; pass it back later as `execute`'s `connectionName`. Auto-generated if omitted. */
   connectionName?: string;
   /** Optional URL the gateway returns the user to after the OAuth callback completes. */
@@ -170,7 +189,7 @@ export type OAuthConnectInput = ProviderSelector & {
 };
 
 /** Input for `connect.apiKey`. */
-export type ApiKeyConnectInput = ProviderSelector & {
+export type ApiKeyConnectInput = ProviderSelector & WebhookRoutingInput & {
   /** The END-USER's upstream provider API key (e.g. an `sk-…`). NEVER the gateway `oo_proj_` auth key. */
   apiKey: string;
   /** Name to assign the connection; pass it back later as `execute`'s `connectionName`. Auto-generated if omitted. */
@@ -180,7 +199,7 @@ export type ApiKeyConnectInput = ProviderSelector & {
 };
 
 /** Input for `connect.customCredential`. */
-export type CustomCredentialConnectInput = ProviderSelector & {
+export type CustomCredentialConnectInput = ProviderSelector & WebhookRoutingInput & {
   /** Provider credential field values, validated by the gateway against the provider config. */
   values: Record<string, string>;
   /** Name to assign the connection; pass it back later as `execute`'s `connectionName`. Auto-generated if omitted. */
@@ -251,6 +270,8 @@ interface ProjectUserConnectApi {
 /** The project-scoped surface — the shape of a {@link ProjectConnector} instance. */
 export interface ProjectApi {
   readonly connect: ProjectConnectApi;
+  /** Trigger catalog and subscriptions; events arrive at project webhooks as `trigger.message`. */
+  readonly triggers: ProjectTriggersApi;
   /**
    * Read a connection request by the `id` returned from a `connect.*` call (`data.id`). This is the
    * OAuth flow's status handle — pair it with `waitForConnection` to poll an OAuth link to completion.
@@ -307,6 +328,8 @@ export interface ProjectUser {
   readonly externalUserId: string;
   /** Connect an account for this user — see {@link ProjectApi.connect}. */
   readonly connect: ProjectUserConnectApi;
+  /** Subscribe this user's accounts to Triggers — see {@link ProjectApi.triggers}. */
+  readonly triggers: ProjectUserTriggersApi;
   /** See {@link ProjectApi.getConnectionRequest}. */
   getConnectionRequest(connectionRequestId: string, options?: ProjectCallOptions): Promise<ConnectionRequest>;
   /** See {@link ProjectApi.waitForConnection}. */
@@ -333,12 +356,24 @@ export interface ProjectUser {
  * + sends a project request (project-key auth) and returns the parsed envelope; `sleep` paces
  * `waitForConnection` (injectable so tests need not actually wait).
  */
+export interface ProjectRequestInit {
+  body?: unknown;
+  options?: ProjectCallOptions;
+  actionId?: string;
+  /** Query parameters; `undefined` values are dropped. */
+  query?: Record<string, string | number | undefined>;
+  /** Extra request headers (e.g. `idempotency-key`). */
+  headers?: Record<string, string>;
+}
+
+export type ProjectRequest = (
+  method: "GET" | "POST" | "PATCH" | "DELETE",
+  path: string,
+  init: ProjectRequestInit,
+) => Promise<Envelope>;
+
 interface ProjectTransport {
-  request(
-    method: "GET" | "POST",
-    path: string,
-    init: { body?: unknown; options?: ProjectCallOptions; actionId?: string },
-  ): Promise<Envelope>;
+  request: ProjectRequest;
   sleep(ms: number, signal?: AbortSignal): Promise<void>;
   /** The client's resolved default per-request timeout (ms); used to clamp each waitForConnection poll. */
   defaultTimeoutMs: number;
@@ -379,6 +414,11 @@ function providerKeys(sel: { providerConfigId?: string; service?: string }): Rec
     : { service: sel.service as string };
 }
 
+/** Emit `webhookId` only when provided: omitting it keeps the account's current routing on a reconnect. */
+function webhookField(webhookId: string | undefined): Record<string, string> {
+  return webhookId === undefined ? {} : { webhookId };
+}
+
 /** Emit the wire `alias` field only when a connectionName was provided (so the gateway can default it). */
 function aliasField(connectionName: string | undefined): Record<string, string> {
   return connectionName === undefined ? {} : { alias: connectionName };
@@ -392,6 +432,7 @@ function createProjectApi(deps: ProjectTransport): ProjectApi {
         userId: externalUserId,
         ...providerKeys(input),
         ...aliasField(input.connectionName),
+        ...webhookField(input.webhookId),
         ...(input.returnUri === undefined ? {} : { returnUri: input.returnUri }),
       };
       const envelope = await deps.request("POST", "/saas/connected-accounts/link", { body, options });
@@ -402,6 +443,7 @@ function createProjectApi(deps: ProjectTransport): ProjectApi {
         userId: externalUserId,
         ...providerKeys(input),
         ...aliasField(input.connectionName),
+        ...webhookField(input.webhookId),
         apiKey: input.apiKey,
         ...(input.extra === undefined ? {} : { extra: input.extra }),
       };
@@ -413,6 +455,7 @@ function createProjectApi(deps: ProjectTransport): ProjectApi {
         userId: externalUserId,
         ...providerKeys(input),
         ...aliasField(input.connectionName),
+        ...webhookField(input.webhookId),
         values: input.values,
       };
       const envelope = await deps.request("POST", "/saas/connected-accounts/custom-credential", { body, options });
@@ -543,8 +586,11 @@ function createProjectApi(deps: ProjectTransport): ProjectApi {
     return envelope.data as ProxyResponse<T>;
   };
 
+  const triggers = createProjectTriggersApi(deps.request);
+
   const forUser = (externalUserId: string): ProjectUser => ({
     externalUserId,
+    triggers: bindProjectUserTriggers(triggers, externalUserId),
     connect: {
       oauth: (input, options) => connect.oauth(externalUserId, input, options),
       apiKey: (input, options) => connect.apiKey(externalUserId, input, options),
@@ -561,7 +607,17 @@ function createProjectApi(deps: ProjectTransport): ProjectApi {
       executeRaw(externalUserId, actionId, input, options),
   });
 
-  return { connect, getConnectionRequest, waitForConnection, getUserProfile, execute, executeRaw, proxy, forUser };
+  return {
+    connect,
+    triggers,
+    getConnectionRequest,
+    waitForConnection,
+    getUserProfile,
+    execute,
+    executeRaw,
+    proxy,
+    forUser,
+  };
 }
 
 declare const __PKG_VERSION__: string;
@@ -594,11 +650,12 @@ interface ResolvedProjectConfig {
 /** Assemble one project request: project-key auth + standard headers (NO team / connector-alias). */
 function buildProjectSpec(
   cfg: ResolvedProjectConfig,
-  method: "GET" | "POST",
+  method: "GET" | "POST" | "PATCH" | "DELETE",
   path: string,
-  init: { body?: unknown; options?: ProjectCallOptions; actionId?: string },
+  init: ProjectRequestInit,
 ): RequestSpec {
   const headers: Record<string, string> = {
+    ...init.headers,
     authorization: `Bearer ${cfg.apiKey}`,
     "user-agent": USER_AGENT,
     accept: "application/json",
@@ -608,7 +665,7 @@ function buildProjectSpec(
   const options = init.options;
   return {
     method,
-    url: cfg.baseUrl + path,
+    url: cfg.baseUrl + path + queryString(init.query),
     headers,
     body: init.body,
     retries: options?.retries ?? cfg.maxRetries,
@@ -616,6 +673,14 @@ function buildProjectSpec(
     signal: options?.signal,
     actionId: init.actionId,
   };
+}
+
+function queryString(query: ProjectRequestInit["query"]): string {
+  if (!query) return "";
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) if (value !== undefined) params.set(key, String(value));
+  const encoded = params.toString();
+  return encoded ? `?${encoded}` : "";
 }
 
 // The constructor RETURNS the project surface (factory idiom, mirroring `Connector`), so the class
