@@ -192,6 +192,8 @@ const jira = await oomol.connect.customCredential("jira", {
 | `connect.getAttempt(id)` | 一次 OAuth 尝试 | 在 `expiresAt` 之后 24 小时内仍可读取;未知 id 会以 `connection_request_not_found` 拒绝。 |
 | `connect.waitForConnection(startOrId, opts?)` | 已落定的尝试 | `pollIntervalMs`(2 秒)、`maxWaitMs`(10 分钟,即授权窗口)。 |
 
+`authorizationOptionIds` 接受 OAuth scope 名称。省略时使用 provider 或 OAuth client 的默认范围；显式列表覆盖默认范围，`[]` 只申请连接或续期所需的权限。网关会规范化列表并补齐必需权限，未知或缩减范围由第三方服务判断。返回的 `app.scopes` 是用于展示的授权快照，不作为执行权限校验。
+
 > [!IMPORTANT]
 > **这些是管理操作,权限门槛高于运行 action。** 在托管网关上,密钥所属用户必须是所在团队的 `creator` 或 `admin`;普通成员会被策略层以 403 拒绝,请求根本到不了后端。在自托管运行时上,门槛取决于你怎么配置:完全没开认证的运行时会直接接受这些未认证请求,但只要用上了运行时令牌,**admin** 令牌就变成必需的。没配 admin 令牌时运行时回 403(`Configure an admin token to manage connections`),配了之后运行时令牌(`oct_…`)会以 401 被拒绝。参见[自托管运行时](#自托管运行时)。
 

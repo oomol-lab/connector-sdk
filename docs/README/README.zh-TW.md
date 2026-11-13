@@ -192,6 +192,8 @@ const jira = await oomol.connect.customCredential("jira", {
 | `connect.getAttempt(id)` | 一次 OAuth 嘗試 | 在 `expiresAt` 之後 24 小時內仍可讀取;未知 id 會以 `connection_request_not_found` 拒絕。 |
 | `connect.waitForConnection(startOrId, opts?)` | 已落定的嘗試 | `pollIntervalMs`(2 秒)、`maxWaitMs`(10 分鐘，即授權視窗)。 |
 
+`authorizationOptionIds` 接受 OAuth scope 名稱。省略時使用 provider 或 OAuth client 的預設範圍；明確指定的列表會覆蓋預設範圍，`[]` 僅申請連線或續期所需的權限。閘道會正規化列表並補齊必要權限，未知或縮減範圍由第三方服務判斷。回傳的 `app.scopes` 是供顯示的授權快照，不作為執行權限檢查。
+
 > [!IMPORTANT]
 > **這些是管理操作，權限門檻高於執行 action。** 在託管 gateway 上，金鑰所屬使用者必須是所在團隊的 `creator` 或 `admin`;一般成員會被政策層以 403 拒絕，請求根本到不了後端。在自架執行環境上，門檻取決於你怎麼設定:完全沒開認證的執行環境會直接接受這些未認證請求，但只要用上了執行環境 token，**admin** token 就變成必需的。沒設定 admin token 時執行環境回 403(`Configure an admin token to manage connections`)，設定之後執行環境 token(`oct_…`)會以 401 被拒絕。參見[自架執行環境](#自架執行環境)。
 

@@ -192,6 +192,8 @@ const jira = await oomol.connect.customCredential("jira", {
 | `connect.getAttempt(id)` | one OAuth attempt | Readable until 24h past `expiresAt`; unknown ids reject with `connection_request_not_found`. |
 | `connect.waitForConnection(startOrId, opts?)` | the settled attempt | `pollIntervalMs` (2s), `maxWaitMs` (10min, the authorization window). |
 
+`authorizationOptionIds` accepts OAuth scope names. Omit it to use the provider or OAuth client defaults; pass an explicit list to replace them, or `[]` to request only the scopes needed to connect or refresh. The gateway normalizes the list and adds required scopes. Unknown or reduced scopes are passed to the provider for authorization. Returned `app.scopes` are a stored snapshot for display, not an execution permission check.
+
 > [!IMPORTANT]
 > **These are management calls, and the permission bar is higher than for running actions.** On the hosted gateway the key's user must be `creator` or `admin` of the effective team; a plain member is refused by the policy layer with a 403 before the request lands. On the self-hosted runtime the bar depends on how you configured it: a runtime with no authentication at all accepts these unauthenticated, but the moment runtime tokens are in play an **admin** token becomes mandatory — without one the runtime answers 403 (`Configure an admin token to manage connections`), and with one configured a runtime token (`oct_…`) is rejected with 401. See [Self-hosted runtime](#self-hosted-runtime).
 

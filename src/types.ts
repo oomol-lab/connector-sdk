@@ -111,6 +111,7 @@ export interface ActionMetadata {
   service: string;
   name: string;
   description?: string;
+  /** Provider permission hints for discovery; not a local execution requirement. */
   requiredScopes?: string[];
   providerPermissions?: unknown;
   followUpActions?: string[];
@@ -147,6 +148,8 @@ export interface ConnectedApp {
   status?: string;
   /** Connection name, or `null` when none is set. Pass it back as the per-call `connectionName`. */
   connectionName: string | null;
+  /** Stored authorization scopes for display only; not a permission check. */
+  scopes: string[];
   /** Additional gateway fields (displayName, isDefault, authType, credentialSummary, …). */
   [key: string]: unknown;
 }

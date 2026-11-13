@@ -192,6 +192,8 @@ const jira = await oomol.connect.customCredential("jira", {
 | `connect.getAttempt(id)` | 1 件の OAuth 試行 | `expiresAt` の 24 時間後まで読み取れます。未知の id は `connection_request_not_found` で拒否されます。 |
 | `connect.waitForConnection(startOrId, opts?)` | 確定した試行 | `pollIntervalMs`（2 秒）、`maxWaitMs`（10 分、認可ウィンドウと同じ）。 |
 
+`authorizationOptionIds` には OAuth scope 名を指定します。省略すると provider または OAuth client の既定値を使い、配列を指定すると既定値を置き換えます。`[]` は接続または更新に必要な権限のみを要求します。ゲートウェイはリストを正規化し、必須 scope を補います。未知の scope や縮小した範囲の可否はプロバイダーが判断します。返される `app.scopes` は表示用の認可スナップショットであり、実行権限の検証には使いません。
+
 > [!IMPORTANT]
 > **これらは管理操作であり、アクション実行よりも権限のハードルが高くなります。** ホスト型ゲートウェイでは、キーの所有ユーザーが対象チームの `creator` または `admin` である必要があります。一般メンバーはポリシー層で 403 として拒否され、リクエストはバックエンドに届きません。セルフホストランタイムでの権限はランタイムの設定次第です。認証を一切設定していないランタイムは、これらを未認証のまま受け付けます。しかしランタイムトークンを使い始めた時点で **admin** トークンが必須になります。admin トークンが未設定なら 403（`Configure an admin token to manage connections`）、設定済みならランタイムトークン（`oct_…`）は 401 で拒否されます。[セルフホストランタイム](#セルフホストランタイム)を参照。
 

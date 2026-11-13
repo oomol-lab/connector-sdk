@@ -192,6 +192,8 @@ const jira = await oomol.connect.customCredential("jira", {
 | `connect.getAttempt(id)` | une tentative OAuth | Lisible jusqu'à 24 h après `expiresAt` ; un id inconnu est rejeté avec `connection_request_not_found`. |
 | `connect.waitForConnection(startOrId, opts?)` | la tentative aboutie | `pollIntervalMs` (2 s), `maxWaitMs` (10 min, la fenêtre d'autorisation). |
 
+`authorizationOptionIds` accepte des noms de scopes OAuth. Omettez ce champ pour utiliser les valeurs par défaut du fournisseur ou du client OAuth. Une liste explicite les remplace ; `[]` demande uniquement les scopes nécessaires à la connexion ou au renouvellement. La passerelle normalise la liste et ajoute les scopes requis. Le fournisseur décide des droits accordés pour les scopes inconnus ou réduits. `app.scopes` est un instantané destiné à l’affichage, pas un contrôle des droits d’exécution.
+
 > [!IMPORTANT]
 > **Ce sont des opérations d'administration, et le niveau de droits exigé est plus élevé que pour exécuter des actions.** Sur la passerelle hébergée, l'utilisateur de la clé doit être `creator` ou `admin` de l'équipe concernée ; un simple membre est refusé par la couche de politique avec un 403 avant même que la requête n'atteigne le backend. Sur le runtime auto-hébergé, le niveau exigé dépend de votre configuration : un runtime sans aucune authentification les accepte sans jeton, mais dès que des jetons de runtime entrent en jeu, un jeton **admin** devient obligatoire. Sans lui le runtime répond 403 (`Configure an admin token to manage connections`), et lorsqu'il en a un, un jeton de runtime (`oct_…`) est rejeté avec un 401. Voir [Runtime auto-hébergé](#runtime-auto-hébergé).
 

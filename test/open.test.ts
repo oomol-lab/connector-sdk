@@ -210,10 +210,11 @@ describe("OpenConnector — health & catalog", () => {
 
 describe("OpenConnector — apps", () => {
   it("apps.list renames the wire `alias` to `connectionName`", async () => {
-    const { open, calls } = openRecorder(() => ok([appPayload()]));
+    const { open, calls } = openRecorder(() => ok([appPayload({ scopes: ["future:scope"] })]));
     const apps = await open.apps.list();
 
     expect(calls[0]!.url).toBe(`${BASE}/v1/apps`);
+    expect(apps[0]!.scopes).toEqual(["future:scope"]);
     expect(apps[0]!.connectionName).toBe("default");
     expect("alias" in apps[0]!).toBe(false);
     expect(apps[0]!.status).toBe("active");

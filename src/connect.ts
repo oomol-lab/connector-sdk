@@ -81,9 +81,10 @@ export interface ConnectOAuthInput {
    */
   returnUri?: string;
   /**
-   * Provider-declared authorization option ids to request (the provider's own scope bundles).
-   * Omit to request every option the provider declares; passing this to a provider that declares
-   * none is an `invalid_input` error.
+   * OAuth scopes to request. Omit to use the provider or OAuth client's defaults; an explicit
+   * list replaces those defaults, and [] requests only the scopes needed to connect or refresh.
+   * The gateway normalizes the list and adds required scopes. Unknown or reduced scopes are
+   * accepted without a local permission check; the upstream provider decides actual access.
    */
   authorizationOptionIds?: string[];
   /** Per-attempt overrides for the provider's connect-only OAuth client-config fields. */

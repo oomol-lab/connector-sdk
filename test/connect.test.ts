@@ -47,6 +47,24 @@ function appPayload(overrides: Record<string, unknown> = {}) {
   };
 }
 
+describe.each(["hosted", "open"])("OAuth scope requests — %s", (backend) => {
+  it.each([
+    { scopes: undefined },
+    { scopes: [] },
+    { scopes: ["future:scope"] },
+    { scopes: ["read"] },
+    { scopes: [" future:scope ", "future:scope", ""] },
+  ])("preserves the caller's scope selection: $scopes", async ({ scopes }) => {
+    const hosted = recorder(() => ok(startPayload()));
+    const runtime = openRecorder(() => ok(startPayload()), { adminToken: "adm_1" });
+    const client = backend === "hosted" ? hosted.oomol : runtime.open;
+    const calls = backend === "hosted" ? hosted.calls : runtime.calls;
+    await client.connect.oauth("github", { authorizationOptionIds: scopes });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.body).toEqual(scopes === undefined ? {} : { authorizationOptionIds: scopes });
+  });
+});
+
 describe("connect.oauth — hosted", () => {
   it("POSTs to /v1/connections/{service}/connect and returns the start payload verbatim", async () => {
     const { oomol, calls } = recorder(() => ok(startPayload()));

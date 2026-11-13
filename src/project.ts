@@ -180,7 +180,7 @@ interface WebhookRoutingInput {
   webhookId?: string;
 }
 
-/** Input for `connect.oauth`. */
+/** Input for `connect.oauth`. OAuth scopes come from the selected project provider configuration. */
 export type OAuthConnectInput = ProviderSelector & WebhookRoutingInput & {
   /** Name to assign the connection; pass it back later as `execute`'s `connectionName`. Auto-generated if omitted. */
   connectionName?: string;

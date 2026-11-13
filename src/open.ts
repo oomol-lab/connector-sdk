@@ -88,6 +88,7 @@ export interface OpenActionMetadata {
   service: string;
   name: string;
   description: string;
+  /** Provider permission hints for discovery; not a local execution requirement. */
   requiredScopes: string[];
   providerPermissions: string[];
   /** JSON Schema (2020-12) for the action input. */
